@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>棋譜共有サービス</title>
+
+<!-- WGo -->
+<script src="https://cdn.jsdelivr.net/npm/wgo@2.3.1/wgo.min.js"></script>
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js"></script>
+
+<style>
+body { font-family:sans-serif; background:#f5f5f5; margin:0; }
+.container { max-width:800px; margin:auto; padding:10px; }
+.card { background:white; padding:15px; margin:10px 0; border-radius:10px; }
+
+button {
+width:100%;
+padding:12px;
+margin-top:5px;
+font-size:16px;
+border:none;
+background:#2c7be5;
+color:white;
+border-radius:5px;
+}
+
+textarea { width:100%; margin-top:10px; }
+input[type="file"] { width:100%; }
+
+#board canvas, #refBoard canvas {
+max-width:100% !important;
+height:auto !important;
+}
+</style>
+</head>
+
+<body>
+<div class="container">
+
+<h1>棋譜共有サービス</h1>
+
+<div class="card">
+<button id="loginBtn">Googleログイン</button>
+<p id="userInfo"></p>
+</div>
+
+<div class="card">
+<input type="file" id="fileInput" accept=".sgf" />
+<textarea id="commentInput" placeholder="解説"></textarea>
+<textarea id="movesInput" placeholder="候補手（例：A: ○○、B: △△）"></textarea>
+<textarea id="refSgfInput" placeholder="参考図のSGF"></textarea>
+</div>
+
+<div class="card">
+<h2>自分の棋譜</h2>
+<div id="kifuList"></div>
+</div>
+
+<div class="card">
+<div id="board"></div>
+
+<h3>解説</h3>
+<p id="commentBox"></p>
+
+<h3>候補手</h3>
+<p id="movesBox"></p>
+
+<h3>参考図</h3>
+<div id="refBoard"></div>
+</div>
+
+</div>
+
+<script>
+// ★Firebase設定を貼る
+const firebaseConfig = {
+apiKey: "ここ",
+authDomain: "ここ",
+projectId: "ここ",
+storageBucket: "ここ",
+messagingSenderId: "ここ",
+appId: "ここ"
+};
+
+firebase.initializeApp(firebaseConfig);
+
+const db = firebase.firestore();
+const auth = firebase.auth();
+
+let currentUser = null;
+
+// ログイン
+document.getElementById("loginBtn").onclick = async () => {
+const provider = new firebase.auth.GoogleAuthProvider();
+await auth.signInWithPopup(provider);
+};
+
+auth.onAuthStateChanged(user => {
+if (user) {
+currentUser = user;
+document.getElementById("userInfo").innerText = user.displayName;
+loadList();
+}
+});
+
+// アップロード
+document.getElementById("fileInput").addEventListener("change", function(e) {
+const file = e.target.files[0];
+const reader = new FileReader();
+
+reader.onload = async function(event) {
+const sgf = event.target.result;
+const comment = document.getElementById("commentInput").value;
+const moves = document.getElementById("movesInput").value;
+const refSgf = document.getElementById("refSgfInput").value;
+
+await db.collection("kifu").add({
+sgf: sgf,
+comment: comment,
+moves: moves,
+refSgf: refSgf,
+user: currentUser.uid,
+created: new Date()
+});
+
+loadList();
+};
+
+reader.readAsText(file);
+});
+
+// 一覧
+async function loadList() {
+const list = document.getElementById("kifuList");
+list.innerHTML = "";
+
+const snapshot = await db.collection("kifu")
+.where("user", "==", currentUser.uid)
+.orderBy("created", "desc")
+.get();
+
+snapshot.forEach(doc => {
+const item = document.createElement("div");
+
+item.innerHTML = `
+<button onclick="viewKifu('${doc.id}')">棋譜を見る</button>
+`;
+
+list.appendChild(item);
+});
+}
+
+// 表示
+window.viewKifu = async function(id) {
+const doc = await db.collection("kifu").doc(id).get();
+const data = doc.data();
+
+document.getElementById("board").innerHTML = "";
+document.getElementById("refBoard").innerHTML = "";
+
+new WGo.BasicPlayer(document.getElementById("board"), {
+sgf: data.sgf
+});
+
+document.getElementById("commentBox").innerText = data.comment || "";
+document.getElementById("movesBox").innerText = data.moves || "";
+
+if (data.refSgf) {
+new WGo.BasicPlayer(document.getElementById("refBoard"), {
+sgf: data.refSgf
+});
+}
+};
+</script>
+
+</body>
+</html>
