@@ -3,179 +3,207 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>棋譜共有サービス</title>
 
-<!-- WGo -->
 <script src="https://cdn.jsdelivr.net/npm/wgo@2.3.1/wgo.min.js"></script>
-
-<!-- Firebase -->
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js"></script>
 
 <style>
-body { font-family:sans-serif; background:#f5f5f5; margin:0; }
-.container { max-width:800px; margin:auto; padding:10px; }
-.card { background:white; padding:15px; margin:10px 0; border-radius:10px; }
-
-button {
-width:100%;
-padding:12px;
-margin-top:5px;
-font-size:16px;
-border:none;
-background:#2c7be5;
-color:white;
-border-radius:5px;
-}
-
-textarea { width:100%; margin-top:10px; }
-input[type="file"] { width:100%; }
-
-#board canvas, #refBoard canvas {
-max-width:100% !important;
-height:auto !important;
-}
+body { font-family:sans-serif; }
+button { padding:10px; margin:5px; }
+textarea, input { width:100%; margin:5px 0; }
 </style>
 </head>
 
 <body>
-<div class="container">
 
-<h1>棋譜共有サービス</h1>
+<h2>棋譜共有サービス</h2>
 
-<div class="card">
 <button id="loginBtn">Googleログイン</button>
 <p id="userInfo"></p>
-</div>
 
-<div class="card">
-<input type="file" id="fileInput" accept=".sgf" />
-<textarea id="commentInput" placeholder="解説"></textarea>
-<textarea id="movesInput" placeholder="候補手（例：A: ○○、B: △△）"></textarea>
-<textarea id="refSgfInput" placeholder="参考図のSGF"></textarea>
-</div>
+<hr>
 
-<div class="card">
-<h2>自分の棋譜</h2>
-<div id="kifuList"></div>
-</div>
+<input type="file" id="fileInput">
+<input id="black" placeholder="黒">
+<input id="white" placeholder="白">
+<input id="time" placeholder="持ち時間">
 
-<div class="card">
+<button id="uploadBtn">棋譜アップロード</button>
+
+<hr>
+
+<h3>棋譜一覧</h3>
+<button onclick="loadList()">一覧</button>
+<button onclick="loadRanking()">ランキング</button>
+<input id="searchInput" placeholder="棋士検索">
+<button onclick="searchKifu()">検索</button>
+
+<div id="list"></div>
+
+<hr>
+
 <div id="board"></div>
+
+<h3>手数：<span id="moveNum">0</span></h3>
+
+<textarea id="commentInput" placeholder="解説"></textarea>
+<textarea id="refInput" placeholder="参考図SGF"></textarea>
+<button onclick="addComment()">この手に追加</button>
 
 <h3>解説</h3>
 <p id="commentBox"></p>
 
-<h3>候補手</h3>
-<p id="movesBox"></p>
-
-<h3>参考図</h3>
 <div id="refBoard"></div>
-</div>
-
-</div>
 
 <script>
-// ★Firebase設定を貼る
+// Firebase設定（自分のに変更）
 const firebaseConfig = {
 apiKey: "ここ",
 authDomain: "ここ",
-projectId: "ここ",
-storageBucket: "ここ",
-messagingSenderId: "ここ",
-appId: "ここ"
+projectId: "ここ"
 };
 
 firebase.initializeApp(firebaseConfig);
-
 const db = firebase.firestore();
 const auth = firebase.auth();
 
-let currentUser = null;
+let user;
+let comments = [];
+let currentMove = 0;
 
 // ログイン
-document.getElementById("loginBtn").onclick = async () => {
+loginBtn.onclick = async () => {
 const provider = new firebase.auth.GoogleAuthProvider();
 await auth.signInWithPopup(provider);
 };
 
-auth.onAuthStateChanged(user => {
-if (user) {
-currentUser = user;
-document.getElementById("userInfo").innerText = user.displayName;
+auth.onAuthStateChanged(u => {
+if(u){
+user = u;
+userInfo.innerText = u.email;
 loadList();
 }
 });
 
 // アップロード
-document.getElementById("fileInput").addEventListener("change", function(e) {
-const file = e.target.files[0];
+uploadBtn.onclick = () => {
+const file = fileInput.files[0];
 const reader = new FileReader();
 
-reader.onload = async function(event) {
-const sgf = event.target.result;
-const comment = document.getElementById("commentInput").value;
-const moves = document.getElementById("movesInput").value;
-const refSgf = document.getElementById("refSgfInput").value;
-
+reader.onload = async e => {
 await db.collection("kifu").add({
-sgf: sgf,
-comment: comment,
-moves: moves,
-refSgf: refSgf,
-user: currentUser.uid,
-created: new Date()
+sgf: e.target.result,
+black: black.value,
+white: white.value,
+time: time.value,
+comments: comments,
+views: 0
 });
-
+alert("保存完了");
 loadList();
 };
 
 reader.readAsText(file);
-});
+};
 
 // 一覧
-async function loadList() {
-const list = document.getElementById("kifuList");
-list.innerHTML = "";
-
-const snapshot = await db.collection("kifu")
-.where("user", "==", currentUser.uid)
-.orderBy("created", "desc")
-.get();
-
-snapshot.forEach(doc => {
-const item = document.createElement("div");
-
-item.innerHTML = `
-<button onclick="viewKifu('${doc.id}')">棋譜を見る</button>
-`;
-
-list.appendChild(item);
+async function loadList(){
+const snap = await db.collection("kifu").get();
+list.innerHTML="";
+snap.forEach(doc=>{
+const d = doc.data();
+list.innerHTML += `<button onclick="view('${doc.id}')">
+黒 ${d.black} - 白 ${d.white}
+</button><br>`;
 });
 }
 
 // 表示
-window.viewKifu = async function(id) {
+async function view(id){
 const doc = await db.collection("kifu").doc(id).get();
 const data = doc.data();
 
-document.getElementById("board").innerHTML = "";
-document.getElementById("refBoard").innerHTML = "";
-
-new WGo.BasicPlayer(document.getElementById("board"), {
-sgf: data.sgf
+await db.collection("kifu").doc(id).update({
+views: firebase.firestore.FieldValue.increment(1)
 });
 
-document.getElementById("commentBox").innerText = data.comment || "";
-document.getElementById("movesBox").innerText = data.moves || "";
+comments = data.comments || [];
 
-if (data.refSgf) {
-new WGo.BasicPlayer(document.getElementById("refBoard"), {
-sgf: data.refSgf
+document.getElementById("board").innerHTML="";
+const player = new WGo.BasicPlayer(board, {sgf:data.sgf});
+
+player.addEventListener("update", e=>{
+currentMove = e.node.moveNumber || 0;
+moveNum.innerText = currentMove;
+showComment();
 });
 }
-};
+
+// コメント追加
+function addComment(){
+const text = commentInput.value;
+const ref = refInput.value;
+
+const idx = comments.findIndex(c=>c.move===currentMove);
+
+if(idx>=0){
+comments[idx]={move:currentMove,text,ref};
+}else{
+comments.push({move:currentMove,text,ref});
+}
+
+alert("追加");
+}
+
+// 表示
+function showComment(){
+const c = comments.find(x=>x.move===currentMove);
+
+commentBox.innerText="";
+refBoard.innerHTML="";
+
+if(c){
+commentBox.innerText=c.text;
+if(c.ref){
+new WGo.BasicPlayer(refBoard,{sgf:c.ref});
+}
+}
+}
+
+// 検索
+async function searchKifu(){
+const key = searchInput.value;
+const snap = await db.collection("kifu").get();
+list.innerHTML="";
+snap.forEach(doc=>{
+const d=doc.data();
+if(d.black.includes(key)||d.white.includes(key)){
+list.innerHTML+=`<button onclick="view('${doc.id}')">
+黒 ${d.black} - 白 ${d.white}
+</button><br>`;
+}
+});
+}
+
+// ランキング
+async function loadRanking(){
+const snap = await db.collection("kifu")
+.orderBy("views","desc").limit(10).get();
+
+list.innerHTML="ランキング<br>";
+let i=1;
+
+snap.forEach(doc=>{
+const d=doc.data();
+list.innerHTML+=`${i}位
+<button onclick="view('${doc.id}')">
+黒 ${d.black} - 白 ${d.white} (${d.views||0})
+</button><br>`;
+i++;
+});
+}
 </script>
 
 </body>
