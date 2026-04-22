@@ -5,6 +5,261 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
 <script src="https://cdn.jsdelivr.net/npm/wgo@2.3.1/wgo.min.js"></script>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+
+<style>
+body { font-family:sans-serif; }
+button { padding:10px; margin:5px; }
+textarea, input { width:100%; margin:5px 0; }
+</style>
+</head>
+
+<body>
+
+<h2>棋譜共有サービス</h2>
+
+<button id="loginBtn">Googleログイン</button>
+<p id="userInfo"></p>
+
+<hr>
+
+<input type="file" id="fileInput">
+<input id="black" placeholder="黒 名前">
+<input id="blackRank" placeholder="黒 段位">
+<input id="white" placeholder="白 名前">
+<input id="whiteRank" placeholder="白 段位">
+<input id="place" placeholder="対局場所">
+<input id="time" placeholder="持ち時間">
+
+<button id="uploadBtn">棋譜アップロード</button>
+
+<hr>
+
+<h3>棋譜一覧</h3>
+<button onclick="loadList()">一覧</button>
+<button onclick="loadRanking()">ランキング</button>
+<input id="searchInput" placeholder="棋士検索">
+<button onclick="searchKifu()">検索</button>
+
+<div id="list"></div>
+
+<hr>
+
+<div id="board"></div>
+
+<h3>手数：<span id="moveNum">0</span></h3>
+
+<textarea id="commentInput" placeholder="解説"></textarea>
+<textarea id="refInput" placeholder="参考図SGF"></textarea>
+<button onclick="addComment()">この手に追加</button>
+
+<h3>解説</h3>
+<p id="commentBox"></p>
+
+<div id="refBoard"></div>
+
+<script>
+const firebaseConfig = {
+apiKey: "AIzaSyDMWj2D93inW4a5yziKyBx9twcQsQzKdl0",
+authDomain: "kufu-igo.firebaseapp.com",
+projectId: "kufu-igo",
+storageBucket: "kufu-igo.firebasestorage.app",
+messagingSenderId: "810543494533",
+appId: "1:810543494533:web:c7ae9ccc1769128696c0ec"
+};
+
+firebase.initializeApp(firebaseConfig);
+
+const db = firebase.firestore();
+const auth = firebase.auth();
+
+let user;
+let comments = [];
+let currentMove = 0;
+
+// ログイン
+document.getElementById("loginBtn").onclick = async () => {
+const provider = new firebase.auth.GoogleAuthProvider();
+await auth.signInWithPopup(provider);
+};
+
+auth.onAuthStateChanged(u => {
+if(u){
+user = u;
+document.getElementById("userInfo").innerText = u.email;
+loadList();
+}
+});
+
+// アップロード
+document.getElementById("uploadBtn").onclick = () => {
+const file = document.getElementById("fileInput").files[0];
+const reader = new FileReader();
+
+reader.onload = async e => {
+await db.collection("kifu").add({
+sgf: e.target.result,
+black: document.getElementById("black").value,
+blackRank: document.getElementById("blackRank").value,
+white: document.getElementById("white").value,
+whiteRank: document.getElementById("whiteRank").value,
+place: document.getElementById("place").value,
+time: document.getElementById("time").value,
+comments: comments,
+views: 0
+});
+alert("保存完了");
+loadList();
+};
+
+reader.readAsText(file);
+};
+
+// 一覧
+async function loadList(){
+const snap = await db.collection("kifu").get();
+const list = document.getElementById("list");
+list.innerHTML = "";
+
+snap.forEach(doc=>{
+const d = doc.data();
+list.innerHTML += `
+<button onclick="view('${doc.id}')">
+${d.place || ""}<br>
+黒 ${d.black} (${d.blackRank || ""})
+- 白 ${d.white} (${d.whiteRank || ""})
+</button><br>`;
+});
+}
+
+// 表示
+async function view(id){
+const doc = await db.collection("kifu").doc(id).get();
+const data = doc.data();
+
+await db.collection("kifu").doc(id).update({
+views: firebase.firestore.FieldValue.increment(1)
+});
+
+comments = data.comments || [];
+
+document.getElementById("board").innerHTML = "";
+
+const player = new WGo.BasicPlayer(
+document.getElementById("board"),
+{ sgf: data.sgf }
+);
+
+player.addEventListener("update", e=>{
+currentMove = e.node.moveNumber || 0;
+document.getElementById("moveNum").innerText = currentMove;
+showComment();
+});
+}
+
+// コメント追加
+function addComment(){
+const text = document.getElementById("commentInput").value;
+const ref = document.getElementById("refInput").value;
+
+const idx = comments.findIndex(c=>c.move===currentMove);
+
+if(idx>=0){
+comments[idx] = { move: currentMove, text, ref };
+} else {
+comments.push({ move: currentMove, text, ref });
+}
+
+alert("追加しました");
+}
+
+// 表示
+function showComment(){
+const c = comments.find(x=>x.move===currentMove);
+
+const commentBox = document.getElementById("commentBox");
+const refBoard = document.getElementById("refBoard");
+
+commentBox.innerText = "";
+refBoard.innerHTML = "";
+
+if(c){
+commentBox.innerText = c.text;
+if(c.ref){
+new WGo.BasicPlayer(refBoard, { sgf: c.ref });
+}
+}
+}
+
+// 検索
+async function searchKifu(){
+const key = document.getElementById("searchInput").value;
+const snap = await db.collection("kifu").get();
+const list = document.getElementById("list");
+
+list.innerHTML = "";
+
+snap.forEach(doc=>{
+const d = doc.data();
+
+if(
+(d.black && d.black.includes(key)) ||
+(d.white && d.white.includes(key))
+){
+list.innerHTML += `
+<button onclick="view('${doc.id}')">
+${d.place || ""}<br>
+黒 ${d.black} (${d.blackRank || ""})
+- 白 ${d.white} (${d.whiteRank || ""})
+</button><br>`;
+}
+});
+}
+
+// ランキング
+async function loadRanking(){
+const snap = await db.collection("kifu")
+.orderBy("views","desc")
+.limit(10)
+.get();
+
+const list = document.getElementById("list");
+list.innerHTML = "<h3>ランキング</h3>";
+
+let i = 1;
+
+snap.forEach(doc=>{
+const d = doc.data();
+
+list.innerHTML += `
+${i}位
+<button onclick="view('${doc.id}')">
+${d.place || ""}<br>
+黒 ${d.black} (${d.blackRank || ""})
+- 白 ${d.white} (${d.whiteRank || ""})
+(${d.views||0})
+</button><br>`;
+
+i++;
+});
+}
+</script>
+
+</body>
+</html>
+
+
+2026年4月22日(水) 9:48 小西 理章 <taitorutoruzo225@outlook.jp>:
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<script src="https://cdn.jsdelivr.net/npm/wgo@2.3.1/wgo.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
@@ -68,7 +323,6 @@ const firebaseConfig = {
   appId: "1:810543494533:web:c7ae9ccc1769128696c0ec",
   measurementId: "G-Q1TX0GLCZD"
 };
-</script>
 
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
