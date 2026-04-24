@@ -540,7 +540,9 @@ async function selectKifu(id) {
   aiResults = null;
 
   if (!meta.isPremium) currentKifu.hasPurchased = true;
-  if (meta.isPremium && window.CU && window.FB?.db) {
+  // 管理者は有料棋譜も無条件で閲覧可能
+  if (window.IS_ADMIN) currentKifu.hasPurchased = true;
+  if (meta.isPremium && !window.IS_ADMIN && window.CU && window.FB?.db) {
     try {
       const s = await FB.getDoc(FB.doc(FB.db,'purchases',`${window.CU.uid}_${id}`));
       currentKifu.hasPurchased = s.exists();
@@ -605,7 +607,7 @@ function updateCommentary() {
 /* ═══════════ AI PANEL ═══════════ */
 function renderAIPanel() {
   const pc = document.getElementById('ai-panel-content');
-  if (!window.HAS_AI) {
+  if (!window.HAS_AI && !window.IS_ADMIN) {
     pc.innerHTML = `
       <div class="ai-locked">
         <h3>🔬 KataGo AI解析</h3>
@@ -824,11 +826,8 @@ function drawVarBoard(c, firstMove, pvMoves) {
   ctx2.strokeStyle='#5a4a2e'; ctx2.lineWidth=1.2;
   ctx2.strokeRect(pad,pad,(sz-1)*cell,(sz-1)*cell);
 
-  // 現在の盤面
-  const board = Array.from({length:sz},()=>new Array(sz).fill(null));
-  for(let i=0;i<cur&&i<moves.length;i++) {
-    const mv=moves[i]; if(mv.x>=0&&mv.y>=0) board[mv.y][mv.x]=mv.color;
-  }
+  // 現在の盤面（石取り適用済み）
+  const board = getBoardAt(cur);
   for(let r=0;r<sz;r++) for(let cc=0;cc<sz;cc++) {
     if(!board[r][cc])continue;
     drawStone(ctx2,pad+cc*cell,pad+r*cell,cell*.44,board[r][cc]==='B');
@@ -1015,6 +1014,73 @@ function sgfCoord(s) {
   return { x:s.charCodeAt(0)-97, y:s.charCodeAt(1)-97 };
 }
 
+/* ═══════════ 囲碁ルール: 石取りロジック ═══════════
+   getBoardAt(upTo) → 石取りを適用した盤面配列を返す
+   アルゴリズム:
+     1. moves[0..upTo-1] を順番に盤面に置く
+     2. 置いた後、相手の連でダメ（呼吸点）がゼロになったものを取り除く
+     3. 自分自身もダメゼロなら取り除く（自殺手 — 囲碁では通常禁止だが表示上は対応）
+*/
+function getBoardAt(upTo) {
+  const sz = boardSize;
+  // board[y][x] = 'B' | 'W' | null
+  const board = Array.from({length:sz}, () => new Array(sz).fill(null));
+
+  const inBounds = (x,y) => x>=0 && y>=0 && x<sz && y<sz;
+  const neighbors = (x,y) => [[x-1,y],[x+1,y],[x,y-1],[x,y+1]].filter(([a,b])=>inBounds(a,b));
+
+  // 連（グループ）とそのダメを求める
+  function getGroup(brd, x, y) {
+    const color = brd[y][x];
+    if (!color) return null;
+    const stones = [], liberties = new Set();
+    const visited = new Set();
+    const stack = [[x,y]];
+    while (stack.length) {
+      const [cx,cy] = stack.pop();
+      const key = cx+','+cy;
+      if (visited.has(key)) continue;
+      visited.add(key);
+      stones.push([cx,cy]);
+      for (const [nx,ny] of neighbors(cx,cy)) {
+        if (!brd[ny][nx]) liberties.add(nx+','+ny);
+        else if (brd[ny][nx]===color) stack.push([nx,ny]);
+      }
+    }
+    return { stones, liberties };
+  }
+
+  // ダメゼロの連を取り除く
+  function removeDeadGroups(brd, color) {
+    const checked = new Set();
+    let removed = 0;
+    for (let y=0;y<sz;y++) for (let x=0;x<sz;x++) {
+      if (brd[y][x]!==color) continue;
+      const key = x+','+y;
+      if (checked.has(key)) continue;
+      const grp = getGroup(brd, x, y);
+      grp.stones.forEach(([a,b]) => checked.add(a+','+b));
+      if (grp.liberties.size===0) {
+        grp.stones.forEach(([a,b]) => { brd[b][a]=null; removed++; });
+      }
+    }
+    return removed;
+  }
+
+  const limit = Math.min(upTo, moves.length);
+  for (let i=0; i<limit; i++) {
+    const mv = moves[i];
+    if (mv.x<0 || mv.y<0) continue; // パス
+    board[mv.y][mv.x] = mv.color;
+    const opp = mv.color==='B' ? 'W' : 'B';
+    // 相手の連を先に取る
+    removeDeadGroups(board, opp);
+    // 自分の連も確認（自殺手対応）
+    removeDeadGroups(board, mv.color);
+  }
+  return board;
+}
+
 /* ═══════════ BOARD DRAW ═══════════ */
 const mainCanvas = document.getElementById('goban');
 const mainCtx    = mainCanvas.getContext('2d');
@@ -1039,16 +1105,15 @@ function drawBoard(upTo, tc, tctx, sz) {
       tctx.fillStyle='#5a4a2e';tctx.beginPath();tctx.arc(pad+sx*cell,pad+sy*cell,3,0,Math.PI*2);tctx.fill();
     });
   }
-  // 石
-  const board=Array.from({length:sz},()=>new Array(sz).fill(null));
-  const limit=Math.min(upTo,moves.length);
-  for(let i=0;i<limit;i++){const mv=moves[i];if(mv.x>=0&&mv.y>=0)board[mv.y][mv.x]=mv.color;}
+  // ★ 石取りを適用した盤面を取得
+  const board = getBoardAt(upTo);
   for(let r=0;r<sz;r++) for(let cc=0;cc<sz;cc++){
     if(!board[r][cc])continue;
     drawStone(tctx,pad+cc*cell,pad+r*cell,cell*.46,board[r][cc]==='B');
   }
-  // 最後の手マーク
-  if(limit>0){const lv=moves[limit-1];if(lv.x>=0){
+  // 最後の手マーク（取られていなければ表示）
+  const limit=Math.min(upTo,moves.length);
+  if(limit>0){const lv=moves[limit-1];if(lv.x>=0 && board[lv.y]?.[lv.x]){
     const cx=pad+lv.x*cell,cy=pad+lv.y*cell;
     tctx.strokeStyle=lv.color==='B'?'rgba(255,255,255,.85)':'rgba(0,0,0,.65)';
     tctx.lineWidth=1.5;tctx.beginPath();tctx.arc(cx,cy,cell*.17,0,Math.PI*2);tctx.stroke();
