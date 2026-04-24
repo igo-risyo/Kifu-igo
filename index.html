@@ -4,129 +4,161 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>棋譜共有サービス</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@400;500;700&family=Noto+Sans+JP:wght@300;400;500&display=swap');
 :root{
   --ink:#1a1209;--paper:#f5f0e6;--paper2:#ede6d5;--paper3:#e4dbc8;
   --stone-w:#f8f4ec;--accent:#8b3a0f;--accent2:#c9a96e;--accent3:#e8c97a;
-  --border:#c4b08a;--border2:#a8935e;--shadow:rgba(26,18,9,.13);--grid:#7a6040;
+  --border:#c4b08a;--shadow:rgba(26,18,9,.13);--grid:#7a6040;
   --premium:#7c5c10;--premium-bg:#fdf3d8;
+  --ai:#1a3a5c;--ai2:#2a6496;--ai-bg:#eef4fb;--ai-border:#b0c8e8;
 }
 *{box-sizing:border-box;margin:0;padding:0;}
 body{font-family:'Noto Sans JP',sans-serif;background:var(--paper);color:var(--ink);min-height:100vh;font-size:14px;}
 
-/* HEADER */
-header{background:var(--ink);color:var(--paper);padding:0 1.5rem;display:flex;align-items:center;justify-content:space-between;height:54px;position:sticky;top:0;z-index:100;box-shadow:0 2px 10px rgba(0,0,0,.35);}
-.logo{font-family:'Noto Serif JP',serif;font-size:1.05rem;font-weight:700;color:var(--accent3);letter-spacing:.1em;display:flex;align-items:center;gap:8px;}
-.logo-sub{font-size:.7rem;color:var(--accent2);font-weight:400;letter-spacing:.05em;}
-#btn-login{display:flex;align-items:center;gap:8px;background:#fff;color:#3c4043;border:1px solid #dadce0;border-radius:4px;padding:7px 16px;font-size:13px;font-weight:500;cursor:pointer;font-family:'Noto Sans JP',sans-serif;transition:box-shadow .15s,background .15s;}
-#btn-login:hover{box-shadow:0 1px 5px rgba(0,0,0,.25);background:#f8f8f8;}
-#user-info{display:none;align-items:center;gap:10px;color:var(--paper2);}
-#user-avatar{width:28px;height:28px;border-radius:50%;object-fit:cover;border:2px solid var(--accent3);}
+header{background:var(--ink);padding:0 1.4rem;display:flex;align-items:center;justify-content:space-between;height:52px;position:sticky;top:0;z-index:100;box-shadow:0 2px 10px rgba(0,0,0,.35);}
+.logo{font-family:'Noto Serif JP',serif;font-size:1rem;font-weight:700;color:var(--accent3);display:flex;align-items:center;gap:8px;}
+.logo-sub{font-size:.66rem;color:var(--accent2);font-weight:400;}
+.header-right{display:flex;align-items:center;gap:8px;}
+.hlink{color:var(--accent2);font-size:.75rem;text-decoration:none;padding:3px 8px;border:1px solid #444;border-radius:4px;transition:background .15s;}
+.hlink:hover{background:rgba(255,255,255,.1);}
+
+/* auth */
+#btn-login{display:flex;align-items:center;gap:7px;background:#fff;color:#3c4043;border:1px solid #dadce0;border-radius:4px;padding:6px 14px;font-size:13px;font-weight:500;cursor:pointer;font-family:inherit;transition:box-shadow .15s;}
+#btn-login:hover{box-shadow:0 1px 4px rgba(0,0,0,.2);}
+#user-info{display:none;align-items:center;gap:8px;color:#ccc;}
+#user-avatar{width:26px;height:26px;border-radius:50%;border:2px solid var(--accent3);}
 #user-name{font-size:12px;}
-.admin-badge{background:var(--accent);color:#fff;font-size:10px;padding:2px 7px;border-radius:10px;font-weight:500;}
-#btn-logout{background:transparent;border:1px solid #555;color:var(--paper2);border-radius:4px;padding:4px 10px;font-size:12px;cursor:pointer;font-family:'Noto Sans JP',sans-serif;}
-#btn-logout:hover{background:rgba(255,255,255,.1);}
+.admin-badge{background:var(--accent);color:#fff;font-size:.65rem;padding:2px 6px;border-radius:8px;font-weight:600;}
+.ai-badge{background:#1a3a5c;color:#7ec8f0;font-size:.65rem;padding:2px 6px;border-radius:8px;font-weight:600;}
+#btn-logout{background:transparent;border:1px solid #555;color:#ccc;border-radius:4px;padding:3px 9px;font-size:.72rem;cursor:pointer;font-family:inherit;}
 
-/* LAYOUT */
-.app{max-width:1200px;margin:0 auto;padding:1.4rem 1.2rem;display:grid;grid-template-columns:300px 1fr;gap:1.4rem;}
-@media(max-width:800px){.app{grid-template-columns:1fr;}}
-.left-col{display:flex;flex-direction:column;gap:1.2rem;}
-.right-col{display:flex;flex-direction:column;gap:1.2rem;}
+/* layout */
+.app{max-width:1280px;margin:0 auto;padding:1.1rem;display:grid;grid-template-columns:270px 1fr;gap:1.1rem;}
+@media(max-width:840px){.app{grid-template-columns:1fr;}}
+.left-col,.right-col{display:flex;flex-direction:column;gap:1rem;}
 
-/* CARD */
-.card{background:var(--stone-w);border:1px solid var(--border);border-radius:8px;padding:1.1rem 1.2rem;box-shadow:0 2px 8px var(--shadow);}
-.card h2{font-family:'Noto Serif JP',serif;font-size:.88rem;font-weight:600;border-bottom:1px solid var(--border);padding-bottom:.55rem;margin-bottom:.9rem;color:var(--accent);letter-spacing:.06em;}
+/* card */
+.card{background:var(--stone-w);border:1px solid var(--border);border-radius:7px;padding:.95rem 1.05rem;box-shadow:0 2px 7px var(--shadow);}
+.card h2{font-family:'Noto Serif JP',serif;font-size:.84rem;font-weight:600;border-bottom:1px solid var(--border);padding-bottom:.45rem;margin-bottom:.8rem;color:var(--accent);letter-spacing:.04em;}
 
-/* UPLOAD */
-#upload-zone{border:2px dashed var(--border2);border-radius:6px;padding:1.2rem;text-align:center;cursor:pointer;transition:border-color .2s,background .2s;color:#7a6040;font-size:.8rem;line-height:1.9;}
+/* upload */
+#upload-zone{border:2px dashed #a8935e;border-radius:6px;padding:.9rem;text-align:center;cursor:pointer;transition:.2s;color:#7a6040;font-size:.76rem;line-height:1.9;}
 #upload-zone:hover,.drag{border-color:var(--accent);background:#fdf7ed;}
-#upload-zone .up-icon{font-size:1.8rem;display:block;margin-bottom:.3rem;}
+.up-icon{font-size:1.5rem;display:block;margin-bottom:.2rem;}
 #file-input{display:none;}
-.notice{background:#fdf7ec;border:1px solid var(--accent2);border-radius:5px;padding:.7rem .9rem;font-size:.76rem;color:#7a5020;line-height:1.7;margin-bottom:.7rem;}
+.notice{background:#fdf7ec;border:1px solid var(--accent2);border-radius:5px;padding:.6rem .85rem;font-size:.72rem;color:#7a5020;line-height:1.75;margin-bottom:.65rem;}
+.notice code{background:var(--paper3);padding:1px 4px;border-radius:3px;}
 
-/* KIFU LIST */
-#kifu-list{list-style:none;display:flex;flex-direction:column;gap:5px;}
-.kifu-item{background:var(--paper2);border:1px solid var(--border);border-radius:5px;padding:8px 11px;cursor:pointer;transition:background .15s,border-color .15s;display:flex;flex-direction:column;gap:3px;}
-.kifu-item:hover{background:#e6dcc8;border-color:var(--accent2);}
-.kifu-item.active{background:#f0e4cf;border-color:var(--accent);border-left:3px solid var(--accent);}
-.kifu-item-title{font-size:.83rem;font-weight:500;}
-.kifu-item-meta{display:flex;align-items:center;gap:6px;font-size:.72rem;color:#7a6050;}
-.badge{display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:10px;font-size:.7rem;font-weight:500;}
-.badge-free{background:#e8f5e8;color:#2d6a2d;border:1px solid #b8d8b8;}
-.badge-premium{background:var(--premium-bg);color:var(--premium);border:1px solid #e8d090;}
-.tabs{display:flex;gap:0;margin-bottom:.9rem;border-bottom:1px solid var(--border);}
-.tab{padding:5px 14px;font-size:.78rem;cursor:pointer;color:#8a7050;border-bottom:2px solid transparent;transition:color .15s,border-color .15s;}
+/* kifu list */
+#kifu-list{list-style:none;display:flex;flex-direction:column;gap:4px;max-height:380px;overflow-y:auto;}
+.ki{background:var(--paper2);border:1px solid var(--border);border-radius:5px;padding:7px 10px;cursor:pointer;transition:.15s;display:flex;flex-direction:column;gap:2px;}
+.ki:hover{background:#e6dcc8;border-color:var(--accent2);}
+.ki.active{background:#f0e4cf;border-color:var(--accent);border-left:3px solid var(--accent);}
+.ki-title{font-size:.8rem;font-weight:500;}
+.ki-meta{display:flex;align-items:center;gap:5px;font-size:.68rem;color:#7a6050;flex-wrap:wrap;}
+.badge{display:inline-flex;align-items:center;padding:1px 6px;border-radius:8px;font-size:.65rem;font-weight:500;}
+.b-free{background:#e8f5e8;color:#2d6a2d;border:1px solid #b8d8b8;}
+.b-paid{background:var(--premium-bg);color:var(--premium);border:1px solid #e8d090;}
+.b-ai{background:#e8f0fb;color:#1a3a5c;border:1px solid #b0c8e8;}
+.tabs{display:flex;border-bottom:1px solid var(--border);margin-bottom:.75rem;}
+.tab{padding:4px 12px;font-size:.74rem;cursor:pointer;color:#8a7050;border-bottom:2px solid transparent;transition:.15s;}
 .tab.active{color:var(--accent);border-bottom-color:var(--accent);font-weight:500;}
 
-/* BOARD SECTION */
-#board-section{display:grid;grid-template-columns:auto 1fr;gap:1.1rem;align-items:start;}
-@media(max-width:700px){#board-section{grid-template-columns:1fr;}}
-#board-wrap{display:flex;flex-direction:column;align-items:center;gap:.7rem;}
-canvas#goban{border:3px solid var(--grid);border-radius:2px;box-shadow:4px 4px 14px var(--shadow);background:#dcb468;max-width:100%;}
-
-/* CONTROLS */
-#controls{display:flex;align-items:center;gap:5px;flex-wrap:wrap;justify-content:center;}
-.ctrl-btn{background:var(--ink);color:var(--paper);border:none;border-radius:4px;padding:5px 11px;font-size:.76rem;cursor:pointer;font-family:'Noto Sans JP',sans-serif;transition:background .15s;}
+/* viewer */
+#viewer-grid{display:grid;grid-template-columns:auto 1fr;gap:.9rem;align-items:start;}
+@media(max-width:600px){#viewer-grid{grid-template-columns:1fr;}}
+#board-wrap{display:flex;flex-direction:column;align-items:center;gap:.55rem;}
+canvas#goban{border:3px solid var(--grid);border-radius:2px;box-shadow:4px 4px 13px var(--shadow);background:#dcb468;max-width:100%;}
+#controls{display:flex;align-items:center;gap:4px;flex-wrap:wrap;justify-content:center;}
+.ctrl-btn{background:var(--ink);color:var(--paper);border:none;border-radius:4px;padding:4px 9px;font-size:.72rem;cursor:pointer;font-family:inherit;transition:.15s;}
 .ctrl-btn:hover{background:#3a2e18;}
-#move-counter{font-size:.8rem;color:var(--accent);font-weight:500;min-width:70px;text-align:center;}
+#move-counter{font-size:.76rem;color:var(--accent);font-weight:500;min-width:65px;text-align:center;}
 
-/* COMMENTARY */
-#commentary-panel{display:flex;flex-direction:column;gap:.7rem;}
-.move-info-bar{display:flex;align-items:center;gap:8px;padding:.45rem .7rem;background:var(--paper2);border-radius:5px;font-size:.78rem;border:1px solid var(--border);}
-.stone-dot{width:14px;height:14px;border-radius:50%;display:inline-block;flex-shrink:0;}
-.stone-dot.b{background:#1c1c1c;box-shadow:inset -1px -1px 2px rgba(255,255,255,.15);}
-.stone-dot.w{background:#f0ede6;border:1px solid #999;box-shadow:inset -1px -1px 2px rgba(0,0,0,.1);}
+/* commentary */
+#commentary-panel{display:flex;flex-direction:column;gap:.55rem;}
+.move-info-bar{display:flex;align-items:center;gap:7px;padding:.38rem .65rem;background:var(--paper2);border-radius:5px;font-size:.74rem;border:1px solid var(--border);}
+.stone-dot{width:12px;height:12px;border-radius:50%;display:inline-block;flex-shrink:0;}
+.stone-dot.b{background:#1c1c1c;}
+.stone-dot.w{background:#f0ede6;border:1px solid #999;}
+.ref-boards{display:flex;flex-wrap:wrap;gap:.65rem;margin-bottom:.35rem;}
+.ref-board-wrap{display:flex;flex-direction:column;align-items:center;gap:3px;}
+.ref-board-wrap span{font-size:.68rem;color:#7a6040;}
+canvas.ref-goban{border:2px solid var(--grid);border-radius:2px;box-shadow:2px 2px 5px var(--shadow);background:#dcb468;}
+#comment-text{font-size:.78rem;color:#3a2e18;line-height:2;white-space:pre-wrap;min-height:30px;}
 
-/* REF BOARDS */
-.ref-boards{display:flex;flex-wrap:wrap;gap:.8rem;margin-bottom:.5rem;}
-.ref-board-wrap{display:flex;flex-direction:column;align-items:center;gap:4px;}
-.ref-board-wrap span{font-size:.72rem;color:#7a6040;}
-canvas.ref-goban{border:2px solid var(--grid);border-radius:2px;box-shadow:2px 2px 6px var(--shadow);background:#dcb468;}
+/* moves */
+#moves-area{display:flex;flex-wrap:wrap;gap:3px;max-height:84px;overflow-y:auto;}
+.mv-badge{background:var(--paper2);border:1px solid var(--border);border-radius:3px;padding:2px 5px;font-size:.68rem;cursor:pointer;transition:.1s;white-space:nowrap;}
+.mv-badge:hover{background:#e0d4be;}
+.mv-badge.current{background:var(--accent);color:#fff;border-color:var(--accent);}
+.mv-badge.hc{border-color:var(--accent2);color:var(--premium);}
+.mv-badge.hc.current{background:var(--accent);color:#fff;}
 
-/* COMMENT TEXT */
-#comment-text{font-size:.82rem;color:#3a2e18;line-height:2;white-space:pre-wrap;min-height:40px;}
+/* purchase */
+.purchase-cta{background:var(--premium-bg);border:1.5px solid var(--accent2);border-radius:7px;padding:1rem;text-align:center;display:flex;flex-direction:column;align-items:center;gap:.6rem;}
+.purchase-cta h3{font-family:'Noto Serif JP',serif;font-size:.9rem;color:var(--premium);}
+.purchase-cta p{font-size:.74rem;color:#7a6040;line-height:1.7;}
+.price-tag{font-size:1.35rem;font-weight:700;color:var(--accent);font-family:'Noto Serif JP',serif;}
+.price-tag span{font-size:.8rem;font-weight:400;color:#8a7050;}
+.pay-btn{background:var(--accent);color:#fff;border:none;border-radius:5px;padding:9px 22px;font-size:.84rem;font-weight:500;cursor:pointer;font-family:inherit;transition:.15s;display:flex;align-items:center;gap:7px;}
+.pay-btn:hover{background:#7a2e08;transform:translateY(-1px);}
 
-/* MOVE BADGES */
-#moves-area{display:flex;flex-wrap:wrap;gap:4px;max-height:100px;overflow-y:auto;padding:2px 0;}
-.move-badge{background:var(--paper2);border:1px solid var(--border);border-radius:3px;padding:2px 7px;font-size:.72rem;cursor:pointer;transition:background .1s;white-space:nowrap;}
-.move-badge:hover{background:#e0d4be;}
-.move-badge.current{background:var(--accent);color:#fff;border-color:var(--accent);}
-.move-badge.has-comment{border-color:var(--accent2);color:var(--premium);}
-.move-badge.has-comment.current{background:var(--accent);color:#fff;}
+/* AI panel */
+#ai-card{border:1.5px solid var(--ai-border);background:var(--ai-bg);}
+#ai-card h2{color:var(--ai);border-bottom-color:var(--ai-border);}
+.ai-locked{display:flex;flex-direction:column;align-items:center;gap:.65rem;text-align:center;padding:.5rem 0;}
+.ai-locked h3{font-family:'Noto Serif JP',serif;font-size:.92rem;color:var(--ai);}
+.ai-locked p{font-size:.75rem;color:#3a5070;line-height:1.8;}
+.price-tag-ai{font-size:1.4rem;font-weight:700;color:var(--ai);font-family:'Noto Serif JP',serif;}
+.price-tag-ai span{font-size:.82rem;font-weight:400;color:#5a7090;}
+.ai-pay-btn{background:var(--ai);color:#fff;border:none;border-radius:5px;padding:9px 22px;font-size:.84rem;font-weight:500;cursor:pointer;font-family:inherit;transition:.15s;display:flex;align-items:center;gap:7px;}
+.ai-pay-btn:hover{background:#0f2840;transform:translateY(-1px);}
+.stripe-note{font-size:.68rem;color:#7090a8;display:flex;align-items:center;gap:4px;}
 
-/* PURCHASE CTA */
-.purchase-cta{background:var(--premium-bg);border:1.5px solid var(--accent2);border-radius:8px;padding:1.2rem;text-align:center;display:flex;flex-direction:column;align-items:center;gap:.7rem;}
-.purchase-cta h3{font-family:'Noto Serif JP',serif;font-size:.95rem;color:var(--premium);font-weight:600;}
-.purchase-cta p{font-size:.78rem;color:#7a6040;line-height:1.7;}
-.price-tag{font-size:1.5rem;font-weight:700;color:var(--accent);font-family:'Noto Serif JP',serif;}
-.price-tag span{font-size:.85rem;font-weight:400;color:#8a7050;}
-#btn-purchase{background:var(--accent);color:#fff;border:none;border-radius:5px;padding:10px 28px;font-size:.88rem;font-weight:500;cursor:pointer;font-family:'Noto Sans JP',sans-serif;transition:background .15s,transform .1s;display:flex;align-items:center;gap:8px;}
-#btn-purchase:hover{background:#7a2e08;transform:translateY(-1px);}
-.stripe-note{font-size:.7rem;color:#9a8060;display:flex;align-items:center;gap:4px;}
+/* AI result */
+.ai-btn{background:var(--ai);color:#fff;border:none;border-radius:5px;padding:7px 16px;font-size:.78rem;font-weight:500;cursor:pointer;font-family:inherit;transition:.15s;display:inline-flex;align-items:center;gap:6px;}
+.ai-btn:hover{background:#0f2840;}
+.ai-btn:disabled{background:#8aa8c0;cursor:default;}
+.spin{display:inline-block;animation:spin 1s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg)}}
+.cand-card{background:#fff;border:1px solid var(--ai-border);border-radius:6px;padding:.6rem .75rem;cursor:pointer;transition:.15s;margin-bottom:.4rem;}
+.cand-card:hover{border-color:var(--ai2);}
+.cand-card.sel{border-color:var(--ai);border-width:2px;}
+.cand-head{display:flex;align-items:baseline;gap:8px;margin-bottom:3px;}
+.cand-move{font-size:.86rem;font-weight:600;color:var(--ai);}
+.cand-stats{font-size:.7rem;color:#4a6080;display:flex;gap:10px;flex-wrap:wrap;}
+.wr-bar{height:3px;background:#d0e0f0;border-radius:2px;margin-top:4px;}
+.wr-fill{height:100%;background:var(--ai2);border-radius:2px;transition:width .5s;}
+.ai-link-box{background:#fff;border:1px solid var(--ai-border);border-radius:6px;padding:.8rem;display:flex;align-items:center;gap:.7rem;}
+.ai-link-box a{color:var(--ai2);font-size:.8rem;font-weight:500;text-decoration:none;}
+.ai-link-box a:hover{text-decoration:underline;}
 
-/* FORM */
-#upload-form{display:flex;flex-direction:column;gap:.7rem;}
-.form-field{display:flex;flex-direction:column;gap:4px;}
-.form-field label{font-size:.75rem;color:#7a6040;font-weight:500;}
-.form-field input,.form-field textarea,.form-field select{background:var(--paper);border:1px solid var(--border);border-radius:4px;padding:7px 10px;font-size:.82rem;font-family:'Noto Sans JP',sans-serif;color:var(--ink);transition:border-color .15s;}
-.form-field input:focus,.form-field textarea:focus{outline:none;border-color:var(--accent2);}
-.form-field textarea{resize:vertical;min-height:60px;}
-.upload-btn{background:var(--accent);color:#fff;border:none;border-radius:4px;padding:8px;font-size:.82rem;font-weight:500;cursor:pointer;font-family:'Noto Sans JP',sans-serif;transition:background .15s;margin-top:.2rem;}
-.upload-btn:hover{background:#7a2e08;}
+/* eval graph */
+#eval-wrap{background:#fff;border:1px solid var(--ai-border);border-radius:6px;padding:.5rem;margin-top:.7rem;position:relative;height:155px;}
+.g-title{font-size:.72rem;color:#3a5070;font-weight:500;margin-bottom:.3rem;}
 
-/* MODAL */
+/* form */
+.form-field{display:flex;flex-direction:column;gap:3px;margin-bottom:.55rem;}
+.form-field label{font-size:.71rem;color:#7a6040;font-weight:500;}
+.form-field input,.form-field select{background:var(--paper);border:1px solid var(--border);border-radius:4px;padding:5px 8px;font-size:.78rem;font-family:inherit;color:var(--ink);}
+.form-field input:focus,.form-field select:focus{outline:none;border-color:var(--accent2);}
+.submit-btn{background:var(--accent);color:#fff;border:none;border-radius:4px;padding:7px;font-size:.78rem;font-weight:500;cursor:pointer;font-family:inherit;transition:.15s;width:100%;}
+.submit-btn:hover{background:#7a2e08;}
+.submit-btn:disabled{background:#aaa;cursor:default;}
+
+/* modal */
 #modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:200;align-items:center;justify-content:center;}
 #modal-bg.open{display:flex;}
-#modal{background:var(--stone-w);border:1px solid var(--border);border-radius:10px;padding:1.6rem;max-width:430px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,.3);position:relative;}
-#modal h3{font-family:'Noto Serif JP',serif;font-size:1rem;margin-bottom:1rem;color:var(--accent);}
-.modal-close{position:absolute;top:12px;right:14px;background:none;border:none;font-size:1.2rem;cursor:pointer;color:#8a7050;}
+#modal{background:var(--stone-w);border:1px solid var(--border);border-radius:9px;padding:1.4rem;max-width:400px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,.28);position:relative;}
+#modal h3{font-family:'Noto Serif JP',serif;font-size:.95rem;margin-bottom:.9rem;color:var(--accent);}
+.modal-close{position:absolute;top:11px;right:13px;background:none;border:none;font-size:1.15rem;cursor:pointer;color:#8a7050;}
 
-/* TOAST */
-#toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(80px);background:var(--ink);color:var(--paper);padding:10px 22px;border-radius:6px;font-size:.82rem;transition:transform .3s;z-index:300;pointer-events:none;white-space:nowrap;}
+/* toast */
+#toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(80px);background:var(--ink);color:var(--paper);padding:8px 18px;border-radius:6px;font-size:.78rem;transition:transform .3s;z-index:300;pointer-events:none;white-space:nowrap;}
 #toast.show{transform:translateX(-50%) translateY(0);}
-.empty{color:#9a8060;font-size:.78rem;padding:.4rem 0;text-align:center;}
-code{background:var(--paper3);padding:1px 5px;border-radius:3px;font-size:.75rem;}
+.empty{color:#9a8060;font-size:.74rem;text-align:center;padding:.3rem 0;}
 </style>
 </head>
 <body>
@@ -139,10 +171,8 @@ import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChang
 import { getFirestore, doc, setDoc, getDoc, collection, getDocs, addDoc,
          serverTimestamp, query, orderBy, updateDoc, increment }
   from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
-import { getStorage, ref, uploadString, getDownloadURL }
-  from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js';
 
-// ▼▼▼ ご自身のFirebaseプロジェクトの設定値に変更してください ▼▼▼
+// ▼▼▼ ご自身のFirebaseプロジェクトの設定値 ▼▼▼
 const firebaseConfig = {
   apiKey: "AIzaSyDMWj2D93inW4a5yziKyBx9twcQsQzKdl0",
   authDomain: "kufu-igo.firebaseapp.com",
@@ -151,87 +181,90 @@ const firebaseConfig = {
   messagingSenderId: "810543494533",
   appId: "1:810543494533:web:c7ae9ccc1769128696c0ec"
 };
-// ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
+// ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
 
 const app = initializeApp(firebaseConfig);
-const auth= getAuth(app);
-const db  = getFirestore(app);
-const st  = getStorage(app);
-const provider = new GoogleAuthProvider();
+const auth = getAuth(app);
+const db   = getFirestore(app);
+const prov = new GoogleAuthProvider();
 
-// 管理者チェック: Firestoreの "admins" コレクションにドキュメントを作成して管理
-// ドキュメントID = UID, フィールド = { email: "xxx@gmail.com", name: "名前" }
-async function checkAdmin(user) {
+async function isAdmin(user) {
   try {
-    const snap = await getDoc(doc(db,'admins',user.uid));
-    if (snap.exists()) return true;
+    const s = await getDoc(doc(db,'admins',user.uid));
+    if (s.exists()) return true;
     const all = await getDocs(collection(db,'admins'));
     return all.docs.some(d => d.data().email === user.email);
-  } catch(e) { return false; }
+  } catch { return false; }
+}
+async function hasAI(user) {
+  try { return (await getDoc(doc(db,'ai_purchases',user.uid))).exists(); }
+  catch { return false; }
 }
 
-// グローバル公開
-window._db=db; window._st=st; window._auth=auth;
-window._signIn  = () => signInWithPopup(auth, provider);
-window._signOut = () => signOut(auth);
-window._addDoc  = addDoc; window._getDocs = getDocs;
-window._getDoc  = getDoc; window._doc = doc; window._setDoc = setDoc;
-window._collection = collection; window._serverTimestamp = serverTimestamp;
-window._query   = query; window._orderBy = orderBy;
-window._updateDoc = updateDoc; window._increment = increment;
-window._uploadString = uploadString; window._getDownloadURL = getDownloadURL;
-window._ref = ref;
+window.FB = { db, auth,
+  signIn:  () => signInWithPopup(auth, prov),
+  signOut: () => signOut(auth),
+  doc, setDoc, getDoc, collection, getDocs, addDoc,
+  serverTimestamp, query, orderBy, updateDoc, increment,
+};
 
 onAuthStateChanged(auth, async user => {
-  window._currentUser = user;
-  window._isAdmin     = false;
-  const loginBtn  = document.getElementById('btn-login');
-  const userInfo  = document.getElementById('user-info');
+  window.CU = user;
+  window.IS_ADMIN = false;
+  window.HAS_AI   = false;
+  const li = document.getElementById('btn-login');
+  const ui = document.getElementById('user-info');
   if (user) {
-    loginBtn.style.display = 'none';
-    userInfo.style.display = 'flex';
-    document.getElementById('user-name').textContent   = user.displayName || user.email;
-    document.getElementById('user-avatar').src         = user.photoURL || '';
-    window._isAdmin = await checkAdmin(user);
-    document.getElementById('admin-badge').style.display = window._isAdmin ? 'inline' : 'none';
+    li.style.display = 'none'; ui.style.display = 'flex';
+    document.getElementById('user-name').textContent = user.displayName || user.email;
+    document.getElementById('user-avatar').src = user.photoURL || '';
+    [window.IS_ADMIN, window.HAS_AI] = await Promise.all([isAdmin(user), hasAI(user)]);
+    document.getElementById('admin-badge').style.display = window.IS_ADMIN ? 'inline' : 'none';
+    document.getElementById('ai-badge').style.display    = window.HAS_AI   ? 'inline' : 'none';
   } else {
-    loginBtn.style.display = 'flex';
-    userInfo.style.display = 'none';
+    li.style.display = 'flex'; ui.style.display = 'none';
     document.getElementById('admin-badge').style.display = 'none';
+    document.getElementById('ai-badge').style.display    = 'none';
   }
   renderUploadSection();
+  renderAIPanel();
   loadKifuList();
 });
 
-// 購入リターン検知
-const params = new URLSearchParams(location.search);
-const purchasedId = params.get('purchased');
-if (purchasedId) {
-  onAuthStateChanged(auth, async user => {
-    if (!user) return;
-    await setDoc(doc(db,'purchases',`${user.uid}_${purchasedId}`), {
-      userId: user.uid, kifuId: purchasedId,
-      paidAt: new Date().toISOString(), amount: 100
-    });
-    showToast('✓ 購入完了！解説が解放されました', 4000);
+// 購入完了検知
+const sp = new URLSearchParams(location.search);
+const purchasedKifuId = sp.get('purchased');
+const purchasedAI     = sp.get('ai_purchased') === '1';
+onAuthStateChanged(auth, async user => {
+  if (!user) return;
+  if (purchasedKifuId) {
+    await FB.setDoc(FB.doc(db,'purchases',`${user.uid}_${purchasedKifuId}`),
+      {userId:user.uid, kifuId:purchasedKifuId, paidAt:new Date().toISOString(), amount:100});
+    showToast('✓ 解説購入完了！', 3500);
     history.replaceState({}, '', location.pathname);
-    if (window._pendingSelectKifu === purchasedId) selectKifu(purchasedId);
-  });
-}
+  }
+  if (purchasedAI) {
+    await FB.setDoc(FB.doc(db,'ai_purchases',user.uid),
+      {userId:user.uid, paidAt:new Date().toISOString(), amount:3000});
+    window.HAS_AI = true;
+    document.getElementById('ai-badge').style.display = 'inline';
+    renderAIPanel();
+    showToast('✓ AI解析機能が解放されました！', 3500);
+    history.replaceState({}, '', location.pathname);
+  }
+}, {once:true});
 </script>
 
-<!-- ═══ HEADER ═══ -->
+<!-- HEADER -->
 <header>
   <div class="logo">
     <span>碁</span>
-    <div>
-      <div>棋譜共有サービス</div>
-      <div class="logo-sub">IGO KIFU SHARE</div>
-    </div>
+    <div><div>棋譜共有サービス</div><div class="logo-sub">IGO KIFU SHARE</div></div>
   </div>
-  <div style="display:flex;align-items:center;gap:10px;">
-    <button id="btn-login" onclick="window._signIn&&window._signIn().catch(e=>showToast('ログイン失敗: '+e.message))">
-      <svg width="18" height="18" viewBox="0 0 18 18" style="flex-shrink:0">
+  <div class="header-right">
+    <a href="admin.html" class="hlink">⚙ 管理</a>
+    <button id="btn-login" onclick="FB.signIn().catch(e=>showToast('ログイン失敗: '+e.message))">
+      <svg width="16" height="16" viewBox="0 0 18 18" style="flex-shrink:0">
         <path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"/>
         <path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z"/>
         <path fill="#FBBC05" d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z"/>
@@ -243,13 +276,14 @@ if (purchasedId) {
       <img id="user-avatar" src="" alt="">
       <span id="user-name"></span>
       <span id="admin-badge" class="admin-badge" style="display:none">管理者</span>
-      <button id="btn-logout" onclick="window._signOut&&window._signOut()">ログアウト</button>
+      <span id="ai-badge"    class="ai-badge"    style="display:none">AI解析</span>
+      <button id="btn-logout" onclick="FB.signOut()">ログアウト</button>
     </div>
   </div>
 </header>
 
-<!-- ═══ APP ═══ -->
 <div class="app">
+  <!-- 左 -->
   <div class="left-col">
     <div class="card">
       <h2>📤 棋譜アップロード</h2>
@@ -265,37 +299,44 @@ if (purchasedId) {
     </div>
   </div>
 
+  <!-- 右 -->
   <div class="right-col">
     <div class="card">
       <h2>🎯 棋譜ビューア</h2>
-      <div id="board-section">
+      <div id="viewer-grid">
         <div id="board-wrap">
-          <div style="font-size:.78rem;color:var(--accent);font-weight:500;">手数：<span id="move-num">0</span></div>
-          <canvas id="goban" width="390" height="390"></canvas>
+          <div style="font-size:.73rem;color:var(--accent);font-weight:500;">手数：<span id="move-num">0</span></div>
+          <canvas id="goban" width="370" height="370"></canvas>
           <div id="controls">
-            <button class="ctrl-btn" onclick="goToMove(0)">|◀</button>
-            <button class="ctrl-btn" onclick="stepMove(-5)">«</button>
-            <button class="ctrl-btn" onclick="stepMove(-1)">◀</button>
+            <button class="ctrl-btn" onclick="goTo(0)">|◀</button>
+            <button class="ctrl-btn" onclick="step(-10)">«</button>
+            <button class="ctrl-btn" onclick="step(-1)">◀</button>
             <span id="move-counter">0 / 0</span>
-            <button class="ctrl-btn" onclick="stepMove(1)">▶</button>
-            <button class="ctrl-btn" onclick="stepMove(5)">»</button>
-            <button class="ctrl-btn" onclick="goToMove(moves.length)">▶|</button>
+            <button class="ctrl-btn" onclick="step(1)">▶</button>
+            <button class="ctrl-btn" onclick="step(10)">»</button>
+            <button class="ctrl-btn" onclick="goTo(moves.length)">▶|</button>
           </div>
         </div>
         <div id="commentary-panel">
           <div class="move-info-bar">
-            <span class="stone-dot" id="stone-indicator"></span>
-            <span id="move-label">棋譜を選択してください</span>
+            <span class="stone-dot" id="stone-ind"></span>
+            <span id="move-lbl">棋譜を選択してください</span>
           </div>
           <div id="commentary-content">
-            <div class="empty" style="padding:1.5rem 0;">← 棋譜一覧から選択してください</div>
+            <div class="empty" style="padding:1.4rem 0;">← 棋譜一覧から選択してください</div>
           </div>
         </div>
       </div>
     </div>
+
     <div class="card">
       <h2>📍 手順</h2>
       <div id="moves-area"><span class="empty">棋譜を選択すると表示されます</span></div>
+    </div>
+
+    <div class="card" id="ai-card">
+      <h2>🤖 AI解析（KataGo）</h2>
+      <div id="ai-panel-content"></div>
     </div>
   </div>
 </div>
@@ -304,57 +345,79 @@ if (purchasedId) {
 <div id="modal-bg">
   <div id="modal">
     <button class="modal-close" onclick="closeModal()">✕</button>
-    <h3>🔓 解説を購入する</h3>
-    <div id="modal-content"></div>
+    <h3 id="modal-title">購入</h3>
+    <div id="modal-body"></div>
   </div>
 </div>
 
 <!-- ═══ CORE JS ═══ -->
 <script>
+/* ── 設定 ──────────────────────────────────────────────────
+  KataGoサーバーを立てた場合はここを変更してください。
+  現在は ai-sensei.com へのリンク連携 + デモ表示モードです。
+
+  自前KataGoサーバーURL例:
+    'https://your-cloud-run-url.run.app/analyze'
+  未設定時はデモデータ＋AI Senseiリンクを表示します。
+──────────────────────────────────────────────────────── */
+const KATAGO_API_URL = ''; // 自前KataGoサーバーURL（空＝デモモード）
+const FIRESTORE_SGF_LIMIT = 900000; // Firestoreのフィールド上限（~1MB）
+
 /* ── STATE ── */
-let moves=[], current=0, boardSize=19, currentKifu=null, kifuStore=[];
+let moves = [], cur = 0, boardSize = 19;
+let currentKifu = null, kifuStore = [];
+let aiResults = null, selCand = 0, evalChart = null;
 
-/* ── TOAST ── */
-function showToast(msg,dur=2800){
-  const t=document.getElementById('toast');
-  t.textContent=msg; t.classList.add('show');
-  setTimeout(()=>t.classList.remove('show'),dur);
+/* ── UTILS ── */
+const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+function showToast(msg, dur=2800) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), dur);
 }
-
-/* ── TABS ── */
-function switchTab(el){
-  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+function switchTab(el) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   el.classList.add('active');
 }
+function closeModal() { document.getElementById('modal-bg').classList.remove('open'); }
+function openModal(title, html) {
+  document.getElementById('modal-title').textContent = title;
+  document.getElementById('modal-body').innerHTML = html;
+  document.getElementById('modal-bg').classList.add('open');
+}
 
-/* ── UPLOAD SECTION ── */
-function renderUploadSection(){
-  const sec=document.getElementById('upload-section');
-  if(!window._currentUser){
-    sec.innerHTML=`<div class="notice">アップロードにはGoogleログインが必要です。<br>権限のあるアカウントのみアップロードできます。</div>`;
+/* ═══════════ UPLOAD ═══════════
+   Firebase Storage不要 → SGFテキストをFirestoreに直接保存
+   SGFは通常 5〜100KB なので問題なし（Firestore上限1MB）
+*/
+function renderUploadSection() {
+  const sec = document.getElementById('upload-section');
+  if (!window.CU) {
+    sec.innerHTML = '<div class="notice">アップロードにはGoogleログインが必要です。</div>';
     return;
   }
-  if(!window._isAdmin){
-    sec.innerHTML=`<div class="notice">⚠️ アップロードは管理者のみ可能です。<br>現在のアカウントには権限がありません。</div>`;
+  if (!window.IS_ADMIN) {
+    sec.innerHTML = '<div class="notice">⚠️ アップロードは管理者のみ可能です。</div>';
     return;
   }
-  sec.innerHTML=`
-  <form id="upload-form" onsubmit="submitUpload(event)">
+  sec.innerHTML = `
+  <form onsubmit="doUpload(event)">
     <div class="form-field">
       <label>棋譜タイトル</label>
       <input type="text" id="f-title" placeholder="例：序盤の定石解説①" required>
     </div>
     <div class="form-field">
       <label>SGFファイル</label>
-      <div id="upload-zone" onclick="document.getElementById('file-input').click()"
-           ondragover="event.preventDefault();this.classList.add('drag')"
-           ondragleave="this.classList.remove('drag')"
-           ondrop="handleDrop(event)">
+      <div id="upload-zone"
+        onclick="document.getElementById('file-input').click()"
+        ondragover="event.preventDefault();this.classList.add('drag')"
+        ondragleave="this.classList.remove('drag')"
+        ondrop="handleDrop(event)">
         <span class="up-icon">⬆</span>
         SGFをドラッグ＆ドロップ<br>またはクリックして選択
       </div>
-      <input type="file" id="file-input" accept=".sgf" onchange="previewFile(this.files[0])">
-      <div id="file-preview" style="font-size:.75rem;color:#8a7050;margin-top:4px;"></div>
+      <input type="file" id="file-input" accept=".sgf" onchange="pickFile(this.files[0])">
+      <div id="file-preview" style="font-size:.7rem;color:#8a7050;margin-top:3px;"></div>
     </div>
     <div class="form-field">
       <label>公開設定</label>
@@ -363,351 +426,633 @@ function renderUploadSection(){
         <option value="premium">有料解説付き（¥100）</option>
       </select>
     </div>
-    <div class="notice" style="margin-bottom:0;">
-      💡 解説はSGFの <code>C[...]</code> に記述します。<br>
-      参考図は <code>REF[qd:pd:od]</code> 形式で挿入できます（交互に黒白が並びます）。
+    <div class="notice" style="margin-bottom:.55rem;">
+      💡 解説は <code>C[...]</code> に記述。参考図は <code>REF[qd:pd:od]</code> 形式で挿入可能。
     </div>
-    <button type="submit" class="upload-btn">アップロード</button>
+    <button type="submit" class="submit-btn" id="upload-btn">アップロード</button>
   </form>`;
 }
 
-/* ── FILE ── */
-let pendingSGF=null;
-function previewFile(file){
-  if(!file||!file.name.endsWith('.sgf')){showToast('SGFファイルを選択してください');return;}
-  const r=new FileReader();
-  r.onload=e=>{
-    pendingSGF={name:file.name,text:e.target.result};
-    document.getElementById('file-preview').textContent=`✓ ${file.name} (${(file.size/1024).toFixed(1)} KB)`;
-  };
-  r.readAsText(file,'UTF-8');
+let pendingFile = null;
+function pickFile(file) {
+  if (!file || !file.name.toLowerCase().endsWith('.sgf')) { showToast('SGFファイルを選択してください'); return; }
+  pendingFile = file;
+  document.getElementById('file-preview').textContent = `✓ ${file.name}  (${(file.size/1024).toFixed(1)} KB)`;
 }
-function handleDrop(e){
+function handleDrop(e) {
   e.preventDefault();
   document.getElementById('upload-zone').classList.remove('drag');
-  previewFile(e.dataTransfer.files[0]);
+  pickFile(e.dataTransfer.files[0]);
 }
 
-/* ── UPLOAD SUBMIT ── */
-async function submitUpload(e){
+async function doUpload(e) {
   e.preventDefault();
-  if(!pendingSGF){showToast('SGFファイルを選択してください');return;}
-  const title    =document.getElementById('f-title').value.trim();
-  const isPremium=document.getElementById('f-premium').value==='premium';
-  const btn      =e.target.querySelector('.upload-btn');
-  btn.textContent='アップロード中...'; btn.disabled=true;
-  try{
-    const path=`kifu/${Date.now()}_${pendingSGF.name}`;
-    const stRef=window._ref(window._st,path);
-    await window._uploadString(stRef,pendingSGF.text,'raw');
-    const url=await window._getDownloadURL(stRef);
-    await window._addDoc(window._collection(window._db,'kifu'),{
-      title,isPremium,sgfUrl:url,
-      uploadedBy:window._currentUser.uid,
-      uploadedByName:window._currentUser.displayName||'',
-      createdAt:window._serverTimestamp(),
-      views:0,purchases:0
+  if (!pendingFile) { showToast('SGFファイルを選択してください'); return; }
+  if (!window.FB?.db) { showToast('Firebase未設定です', 3000); return; }
+
+  const title     = document.getElementById('f-title').value.trim();
+  const isPremium = document.getElementById('f-premium').value === 'premium';
+  const btn       = document.getElementById('upload-btn');
+  btn.textContent = 'アップロード中...'; btn.disabled = true;
+
+  try {
+    // SGFテキストをFileReaderで読み取り
+    const sgfText = await new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload  = e => resolve(e.target.result);
+      r.onerror = () => reject(new Error('ファイル読み取りエラー'));
+      r.readAsText(pendingFile, 'UTF-8');
     });
+
+    if (sgfText.length > FIRESTORE_SGF_LIMIT) {
+      throw new Error(`ファイルが大きすぎます（${(sgfText.length/1024).toFixed(0)}KB > 900KB）`);
+    }
+
+    // ★ Firestoreに直接保存（Firebase Storage不要）
+    await FB.addDoc(FB.collection(FB.db, 'kifu'), {
+      title,
+      isPremium,
+      sgfText,          // SGFテキストを直接Firestoreに格納
+      fileName:    pendingFile.name,
+      uploadedBy:  window.CU.uid,
+      uploadedByName: window.CU.displayName || '',
+      createdAt:   FB.serverTimestamp(),
+      views:    0,
+      purchases: 0,
+    });
+
     showToast('✓ アップロード完了！');
-    pendingSGF=null;
-    document.getElementById('upload-form').reset();
-    document.getElementById('file-preview').textContent='';
+    pendingFile = null;
+    e.target.reset();
+    document.getElementById('file-preview').textContent = '';
     loadKifuList();
-  }catch(err){
-    showToast('エラー: '+err.message,4000);
-  }finally{
-    btn.textContent='アップロード'; btn.disabled=false;
+  } catch(err) {
+    console.error('Upload error:', err);
+    showToast('エラー: ' + err.message, 5000);
+  } finally {
+    btn.textContent = 'アップロード'; btn.disabled = false;
   }
 }
 
-/* ── KIFU LIST ── */
-async function loadKifuList(){
-  const ul=document.getElementById('kifu-list');
-  ul.innerHTML='<li class="empty">読み込み中...</li>';
-  if(!window._db){renderSampleList();return;}
-  try{
-    const q=window._query(window._collection(window._db,'kifu'),window._orderBy('createdAt','desc'));
-    const snap=await window._getDocs(q);
-    kifuStore=snap.docs.map(d=>({id:d.id,...d.data()}));
-    renderList(kifuStore);
-  }catch(e){renderSampleList();}
+/* ═══════════ KIFU LIST ═══════════ */
+async function loadKifuList() {
+  const ul = document.getElementById('kifu-list');
+  ul.innerHTML = '<li class="empty">読み込み中...</li>';
+  if (!window.FB?.db) { loadSampleList(); return; }
+  try {
+    const q    = FB.query(FB.collection(FB.db,'kifu'), FB.orderBy('createdAt','desc'));
+    const snap = await FB.getDocs(q);
+    kifuStore  = snap.docs.map(d => ({ id:d.id, ...d.data() }));
+    if (!kifuStore.length) loadSampleList();
+    else renderList(kifuStore);
+  } catch(e) { console.warn(e); loadSampleList(); }
 }
 
-function renderSampleList(){
-  kifuStore=[
-    {id:'s1',title:'序盤の基本布石',isPremium:false,views:124,sgfText:SAMPLE_SGF},
-    {id:'s2',title:'星の定石・解説付き',isPremium:true,views:87,sgfText:SAMPLE_SGF_PREMIUM},
-    {id:'s3',title:'シチョウの読み方',isPremium:true,views:203,sgfText:SAMPLE_SGF_PREMIUM},
+function loadSampleList() {
+  kifuStore = [
+    { id:'s1', title:'序盤の基本布石（サンプル）', isPremium:false, views:124, sgfText:SAMPLE_FREE },
+    { id:'s2', title:'星の定石・解説付き（サンプル）', isPremium:true,  views:87,  sgfText:SAMPLE_PREMIUM },
   ];
   renderList(kifuStore);
 }
 
-function renderList(list){
-  const ul=document.getElementById('kifu-list');
-  if(!list.length){ul.innerHTML='<li class="empty">棋譜がありません</li>';return;}
-  ul.innerHTML=list.map(k=>`
-    <li class="kifu-item" onclick="selectKifu('${k.id}')">
-      <div class="kifu-item-title">${esc(k.title||'無題')}</div>
-      <div class="kifu-item-meta">
-        ${k.isPremium
-          ?'<span class="badge badge-premium">💎 解説付き ¥100</span>'
-          :'<span class="badge badge-free">✓ 無料</span>'}
+function renderList(list) {
+  const ul = document.getElementById('kifu-list');
+  if (!list.length) { ul.innerHTML = '<li class="empty">棋譜がありません</li>'; return; }
+  ul.innerHTML = list.map(k => `
+    <li class="ki" onclick="selectKifu('${k.id}')">
+      <div class="ki-title">${esc(k.title||'無題')}</div>
+      <div class="ki-meta">
+        ${k.isPremium ? '<span class="badge b-paid">💎 解説 ¥100</span>' : '<span class="badge b-free">✓ 無料</span>'}
         <span>👁 ${k.views||0}</span>
       </div>
     </li>`).join('');
 }
 
-/* ── SELECT KIFU ── */
-async function selectKifu(id){
-  document.querySelectorAll('.kifu-item').forEach(li=>{
-    li.classList.toggle('active', li.getAttribute('onclick').includes(`'${id}'`));
-  });
-  const meta=kifuStore.find(k=>k.id===id);
-  if(!meta)return;
-  currentKifu={...meta,hasPurchased:false};
+/* ═══════════ SELECT KIFU ═══════════ */
+async function selectKifu(id) {
+  document.querySelectorAll('.ki').forEach(li =>
+    li.classList.toggle('active', li.getAttribute('onclick').includes(`'${id}'`)));
 
-  // 閲覧数UP
-  if(window._db&&!meta.sgfText){
-    try{await window._updateDoc(window._doc(window._db,'kifu',id),{views:window._increment(1)});}catch(e){}
+  const meta = kifuStore.find(k => k.id === id);
+  if (!meta) return;
+  currentKifu = { ...meta, hasPurchased: false };
+  aiResults = null;
+
+  if (!meta.isPremium) currentKifu.hasPurchased = true;
+  if (meta.isPremium && window.CU && window.FB?.db) {
+    try {
+      const s = await FB.getDoc(FB.doc(FB.db,'purchases',`${window.CU.uid}_${id}`));
+      currentKifu.hasPurchased = s.exists();
+    } catch(e) {}
   }
 
-  // 購入済チェック
-  if(meta.isPremium&&window._currentUser&&window._db){
-    try{
-      const snap=await window._getDoc(window._doc(window._db,'purchases',`${window._currentUser.uid}_${id}`));
-      currentKifu.hasPurchased=snap.exists();
-    }catch(e){}
-  }
-  if(!meta.isPremium) currentKifu.hasPurchased=true;
-
-  // SGF取得
-  if(meta.sgfUrl&&!meta.sgfText){
-    try{const res=await fetch(meta.sgfUrl);currentKifu.sgfText=await res.text();}catch(e){}
-  }
-  if(!currentKifu.sgfText) currentKifu.sgfText = meta.isPremium ? SAMPLE_SGF_PREMIUM : SAMPLE_SGF;
-
-  parseSGF(currentKifu.sgfText);
-  current=0;
-  buildMoveBadges();
+  // SGFはFirestoreに直接入っているのでフェッチ不要
+  parseSGF(currentKifu.sgfText || (meta.isPremium ? SAMPLE_PREMIUM : SAMPLE_FREE));
+  cur = 0;
+  buildBadges();
   updateView();
-  renderCommentaryArea();
+  renderCommentary();
+  renderAIPanel();
 }
 
-/* ── COMMENTARY AREA ── */
-function renderCommentaryArea(){
-  const area=document.getElementById('commentary-content');
-  if(!currentKifu)return;
-  if(!currentKifu.isPremium||currentKifu.hasPurchased){
-    area.innerHTML=`
-      <div id="ref-boards" class="ref-boards"></div>
-      <div id="comment-text" class="empty">手を進めると解説が表示されます</div>`;
+/* ═══════════ COMMENTARY ═══════════ */
+function renderCommentary() {
+  const area = document.getElementById('commentary-content');
+  if (!currentKifu) return;
+  if (!currentKifu.isPremium || currentKifu.hasPurchased) {
+    area.innerHTML = `<div id="ref-boards" class="ref-boards"></div><div id="comment-text" class="empty">手を進めると解説が表示されます</div>`;
     updateCommentary();
   } else {
-    area.innerHTML=`
-      <div style="position:relative;border-radius:6px;overflow:hidden;margin-bottom:.8rem;">
-        <div style="filter:blur(3px);pointer-events:none;opacity:.5;font-size:.8rem;line-height:2;color:#5a4a30;padding:.5rem 0;">
-          ここに解説テキストが表示されます。各手の意図・定石・参考図付きで解説されています。
-          購入後はすべての手の解説を閲覧できます。
-        </div>
-        <div style="position:absolute;inset:0;background:linear-gradient(to bottom,transparent 0%,var(--stone-w) 70%);"></div>
+    area.innerHTML = `
+      <div style="filter:blur(3px);pointer-events:none;opacity:.4;font-size:.76rem;line-height:2;color:#5a4a30;margin-bottom:.65rem;">
+        各手の解説・参考図・定石説明が含まれます。購入後に閲覧できます。
       </div>
       <div class="purchase-cta">
         <h3>📖 解説を読む</h3>
-        <p>各手の解説・参考図・定石の説明が含まれます。<br>購入後はいつでも何度でも閲覧できます。</p>
+        <p>参考図・定石解説付き。購入後はいつでも閲覧可能。</p>
         <div class="price-tag">¥100 <span>（税込）</span></div>
-        <button id="btn-purchase" onclick="openPurchaseModal()">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
-          Stripeで購入する
+        <button class="pay-btn" onclick="openKifuPurchase()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+          Stripeで購入
         </button>
-        <div class="stripe-note">
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-          Stripeによる安全な決済
-        </div>
       </div>`;
   }
 }
 
-/* ── COMMENTARY UPDATE ── */
-function updateCommentary(){
-  if(!currentKifu||(!currentKifu.hasPurchased&&currentKifu.isPremium))return;
-  const mv=moves[current-1];
-  const ct=document.getElementById('comment-text');
-  const rb=document.getElementById('ref-boards');
-  if(!ct)return;
-  if(!mv||!mv.comment){
-    ct.textContent='（この手のコメントはありません）';
-    if(rb)rb.innerHTML='';
-    return;
-  }
-  // REF[...] 抽出
-  const refMatches=[...mv.comment.matchAll(/REF\[([^\]]+)\]/g)];
-  const displayComment=mv.comment.replace(/REF\[[^\]]+\]/g,'').trim();
-  ct.textContent=displayComment||'（コメントなし）';
-
-  if(rb){
-    rb.innerHTML='';
-    refMatches.forEach((m,i)=>{
-      const coords=m[1].split(':').map(c=>c.trim());
-      const wrap=document.createElement('div');
-      wrap.className='ref-board-wrap';
-      const lbl=document.createElement('span');
-      lbl.textContent=`参考図 ${i+1}`;
-      const c=document.createElement('canvas');
-      c.className='ref-goban';
-      c.width=170; c.height=170;
-      drawRefBoard(c,coords,boardSize);
-      wrap.appendChild(c);
-      wrap.appendChild(lbl);
-      rb.appendChild(wrap);
+function updateCommentary() {
+  if (!currentKifu || (!currentKifu.hasPurchased && currentKifu.isPremium)) return;
+  const mv = moves[cur-1];
+  const ct = document.getElementById('comment-text');
+  const rb = document.getElementById('ref-boards');
+  if (!ct) return;
+  if (!mv?.comment) { ct.textContent = '（この手のコメントはありません）'; if(rb) rb.innerHTML=''; return; }
+  const refs = [...mv.comment.matchAll(/REF\[([^\]]+)\]/g)];
+  ct.textContent = mv.comment.replace(/REF\[[^\]]+\]/g,'').trim() || '（コメントなし）';
+  if (rb) {
+    rb.innerHTML = '';
+    refs.forEach((m,i) => {
+      const coords = m[1].split(':').map(c=>c.trim());
+      const wrap = document.createElement('div'); wrap.className = 'ref-board-wrap';
+      const lbl  = document.createElement('span'); lbl.textContent = `参考図 ${i+1}`;
+      const c    = document.createElement('canvas'); c.className = 'ref-goban'; c.width = c.height = 155;
+      drawRefBoard(c, coords, boardSize);
+      wrap.append(c, lbl); rb.appendChild(wrap);
     });
   }
 }
 
-/* ── PURCHASE MODAL ── */
-function openPurchaseModal(){
-  if(!window._currentUser){showToast('購入にはログインが必要です');return;}
-  document.getElementById('modal-content').innerHTML=`
-    <p style="font-size:.82rem;line-height:1.9;margin-bottom:1rem;color:#5a4a30;">
-      「${esc(currentKifu?.title||'')}」の解説を購入します。<br>
-      Stripeの安全な決済ページに移動します。
-    </p>
-    <div style="background:var(--paper2);border-radius:5px;padding:.8rem;font-size:.78rem;margin-bottom:1rem;border:1px solid var(--border);">
-      <div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span>棋譜解説</span><span style="font-weight:500;">¥100</span></div>
-      <div style="border-top:1px solid var(--border);margin-top:6px;padding-top:6px;display:flex;justify-content:space-between;font-weight:600;">
-        <span>合計</span><span style="color:var(--accent)">¥100</span>
+/* ═══════════ AI PANEL ═══════════ */
+function renderAIPanel() {
+  const pc = document.getElementById('ai-panel-content');
+  if (!window.HAS_AI) {
+    pc.innerHTML = `
+      <div class="ai-locked">
+        <h3>🔬 KataGo AI解析</h3>
+        <p>第1〜3候補手・変化図・評価値グラフを表示。<br>一度購入すれば全棋譜で永続利用可能。</p>
+        <div class="price-tag-ai">¥3,000 <span>（買い切り・税込）</span></div>
+        <button class="ai-pay-btn" onclick="openAIPurchase()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+          AI解析を購入する
+        </button>
+        <div class="stripe-note">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          Stripe決済 / 買い切り永続利用
+        </div>
+      </div>`;
+    return;
+  }
+
+  const demoMsg = KATAGO_API_URL ? '' :
+    '<div class="notice" style="margin-bottom:.65rem;">⚠️ KataGoサーバー未設定 → デモ表示中（下記リンクで実際の解析が可能）</div>';
+
+  pc.innerHTML = `
+    ${demoMsg}
+    <!-- AI Senseiリンク（常に表示） -->
+    <div class="ai-link-box" style="margin-bottom:.75rem;">
+      <span style="font-size:1.3rem;">🔗</span>
+      <div>
+        <div style="font-size:.76rem;font-weight:500;color:#1a3a5c;margin-bottom:2px;">外部でAI解析する</div>
+        <a href="https://ai-sensei.com/" target="_blank" rel="noopener">AI Sensei（KataGo）で解析 ↗</a>
+        <span style="font-size:.68rem;color:#7090a8;">  現在の棋譜をSGFとして保存してアップロードできます</span>
       </div>
     </div>
-    <button onclick="startStripeCheckout()" style="width:100%;background:#635bff;color:#fff;border:none;border-radius:5px;padding:11px;font-size:.88rem;font-weight:500;cursor:pointer;font-family:'Noto Sans JP',sans-serif;display:flex;align-items:center;justify-content:center;gap:8px;">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M13.976 9.15c-2.172-.806-3.356-1.426-3.356-2.409 0-.831.683-1.305 1.901-1.305 2.227 0 4.515.858 6.09 1.631l.89-5.494C18.252.975 15.697 0 12.165 0 9.667 0 7.589.654 6.104 1.872 4.56 3.147 3.757 4.992 3.757 7.218c0 4.039 2.467 5.76 6.476 7.219 2.585.92 3.445 1.574 3.445 2.583 0 .98-.84 1.545-2.354 1.545-1.875 0-4.965-.921-6.99-2.109l-.9 5.555C5.175 22.99 8.385 24 11.714 24c2.641 0 4.843-.624 6.328-1.813 1.664-1.305 2.525-3.236 2.525-5.732 0-4.128-2.524-5.851-6.591-7.305z"/></svg>
-      Stripeで支払う（¥100）
-    </button>
-    <p style="font-size:.7rem;color:#9a8060;text-align:center;margin-top:.6rem;">
-      ※ Stripe Checkoutの設定後に決済が有効になります
-    </p>`;
-  document.getElementById('modal-bg').classList.add('open');
+    <!-- 解析ボタン -->
+    <div style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;">
+      <button class="ai-btn" id="btn-analyze" onclick="runAnalysis()">
+        🔍 現在の局面を解析
+      </button>
+      <span id="ai-status" style="font-size:.7rem;color:#5a7090;"></span>
+    </div>
+    <div id="ai-result-area" style="margin-top:.7rem;"></div>`;
 }
-function closeModal(){document.getElementById('modal-bg').classList.remove('open');}
 
-async function startStripeCheckout(){
-  if(!currentKifu)return;
-  window._pendingSelectKifu=currentKifu.id;
-  // ▼▼▼ Firebase Cloud Functions 等でStripe Checkout Sessionを作成してください ▼▼▼
-  // const res = await fetch('/api/create-checkout', {
-  //   method:'POST',
-  //   headers:{'Content-Type':'application/json'},
-  //   body: JSON.stringify({
-  //     kifuId:   currentKifu.id,
-  //     userId:   window._currentUser.uid,
-  //     userEmail:window._currentUser.email,
-  //     title:    currentKifu.title,
-  //     price:    100,
-  //     // 購入完了後にリダイレクトするURL（?purchased=kifuId を付けること）
-  //     successUrl: location.origin + location.pathname + '?purchased=' + currentKifu.id,
-  //     cancelUrl:  location.href,
-  //   })
-  // });
-  // const { url } = await res.json();
-  // window.location.href = url;
-  showToast('Stripe設定後に決済が有効になります', 4000);
+/* ═══════════ AI ANALYSIS ═══════════ */
+async function runAnalysis() {
+  if (!currentKifu) { showToast('先に棋譜を選択してください'); return; }
+  const btn    = document.getElementById('btn-analyze');
+  const status = document.getElementById('ai-status');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin">⚙</span> 解析中...';
+  status.textContent = '';
+
+  try {
+    let result;
+    if (KATAGO_API_URL) {
+      /* ── 自前KataGoサーバーへ送信 ────────────────────────────────
+         KataGo Analysis Engine JSON protocol:
+         https://github.com/lightvector/KataGo/blob/master/docs/Analysis_Engine.md
+
+         サーバー側でWebSocketまたはHTTPでKataGoを叩き、
+         moveInfos / rootInfo を返すAPIを実装してください。
+      ──────────────────────────────────────────────────────────── */
+      const boardState = buildBoardState(cur);
+      const res = await fetch(KATAGO_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: 'q_' + Date.now(),
+          moves:       boardState.moves,
+          rules:       'japanese',
+          komi:        6.5,
+          boardXSize:  boardSize,
+          boardYSize:  boardSize,
+          analyzeTurns: [boardState.moves.length],
+          maxVisits:    300,
+          includeOwnership: false,
+        })
+      });
+      if (!res.ok) throw new Error(`APIエラー: HTTP ${res.status}`);
+      const data = await res.json();
+      result = parseKataGoResponse(data);
+    } else {
+      // デモモード
+      await new Promise(r => setTimeout(r, 1200));
+      result = makeDemo(cur, boardSize);
+      status.textContent = '※ デモデータ（KataGoサーバー設定後に実際の解析が可能）';
+    }
+    aiResults = result; selCand = 0;
+    renderAIResult();
+  } catch(err) {
+    status.textContent = 'エラー: ' + err.message;
+    console.error(err);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '🔍 現在の局面を解析';
+  }
+}
+
+function buildBoardState(upTo) {
+  const GTP = 'ABCDEFGHJKLMNOPQRST';
+  const mvs = [];
+  for (let i = 0; i < Math.min(upTo, moves.length); i++) {
+    const mv = moves[i];
+    const pos = (mv.x < 0) ? 'pass' : GTP[mv.x] + (boardSize - mv.y);
+    mvs.push([mv.color, pos]);
+  }
+  return { moves: mvs };
+}
+
+function parseKataGoResponse(data) {
+  const info = data.moveInfos || [];
+  const root = data.rootInfo  || {};
+  return {
+    winrate:    root.winrate   || 0.5,
+    scoreLead:  root.scoreLead || 0,
+    candidates: info.slice(0,3).map((m,i) => ({
+      rank:      i+1,
+      move:      m.move,
+      winrate:   m.winrate   || 0.5,
+      scoreLead: m.scoreLead || 0,
+      visits:    m.visits    || 0,
+      pv:        (m.pv || []).slice(0, 8),
+    }))
+  };
+}
+
+function makeDemo(moveNum, sz) {
+  const L = 'ABCDEFGHJKLMNOPQRST';
+  const rm = () => L[Math.floor(Math.random()*Math.min(sz,19))] + (Math.floor(Math.random()*sz)+1);
+  const base = 0.42 + Math.random()*0.18;
+  return {
+    winrate:   base,
+    scoreLead: (Math.random()-.5)*6,
+    candidates: [
+      { rank:1, move:rm(), winrate:base+.09, scoreLead:2.3,  visits:1400, pv:[rm(),rm(),rm(),rm(),rm()] },
+      { rank:2, move:rm(), winrate:base+.03, scoreLead:0.7,  visits: 520, pv:[rm(),rm(),rm(),rm()] },
+      { rank:3, move:rm(), winrate:base-.02, scoreLead:-0.6, visits: 190, pv:[rm(),rm(),rm()] },
+    ]
+  };
+}
+
+/* ═══════════ AI RESULT RENDER ═══════════ */
+function renderAIResult() {
+  const area = document.getElementById('ai-result-area');
+  if (!aiResults) return;
+  const wr = (aiResults.winrate * 100).toFixed(1);
+  const sl = aiResults.scoreLead >= 0 ? '+'+aiResults.scoreLead.toFixed(1) : aiResults.scoreLead.toFixed(1);
+
+  area.innerHTML = `
+    <div style="font-size:.74rem;color:#3a5070;margin-bottom:.5rem;">
+      局面評価　黒勝率 <strong>${wr}%</strong>　スコアリード <strong>${sl}</strong>
+    </div>
+    <!-- 候補手 -->
+    <div id="cands">${aiResults.candidates.map((c,i) => `
+      <div class="cand-card${i===selCand?' sel':''}" onclick="pickCand(${i})">
+        <div class="cand-head">
+          <span class="cand-move">第${c.rank}候補：${c.move}</span>
+          <span style="font-size:.68rem;color:#5a7090;">訪問数 ${c.visits.toLocaleString()}</span>
+        </div>
+        <div class="cand-stats">
+          <span>勝率 ${(c.winrate*100).toFixed(1)}%</span>
+          <span>スコア ${c.scoreLead>=0?'+':''}${c.scoreLead.toFixed(1)}</span>
+        </div>
+        <div class="wr-bar"><div class="wr-fill" style="width:${(c.winrate*100).toFixed(1)}%"></div></div>
+      </div>`).join('')}
+    </div>
+    <!-- 変化図 -->
+    <div style="font-size:.74rem;color:#3a5070;margin:.55rem 0 .35rem;">変化図（第<span id="cand-num">${selCand+1}</span>候補の読み筋）</div>
+    <div id="var-section" style="display:flex;gap:.65rem;flex-wrap:wrap;align-items:flex-start;"></div>
+    <!-- 評価値グラフ -->
+    <div class="g-title" style="margin-top:.7rem;">📈 評価値グラフ（黒の勝率推移）</div>
+    <div id="eval-wrap"><canvas id="eval-chart"></canvas></div>`;
+
+  renderVariation();
+  renderEvalGraph();
+}
+
+function pickCand(i) {
+  selCand = i;
+  document.querySelectorAll('.cand-card').forEach((c,j) => c.classList.toggle('sel', j===i));
+  document.getElementById('cand-num').textContent = i+1;
+  renderVariation();
+}
+
+function renderVariation() {
+  const sec = document.getElementById('var-section');
+  if (!sec || !aiResults) return;
+  const cand = aiResults.candidates[selCand];
+  if (!cand?.pv?.length) { sec.innerHTML = '<span class="empty">読み筋データなし</span>'; return; }
+  sec.innerHTML = '';
+
+  // 推奨手
+  addVarBoard(sec, cand.move, [], `推奨：${cand.move}`, 175);
+  // 読み筋（最大4手）
+  cand.pv.slice(0,4).forEach((mv,i) => {
+    addVarBoard(sec, cand.move, cand.pv.slice(0,i+1), `+${i+1}手：${mv}`, 140);
+  });
+}
+
+function addVarBoard(container, firstMove, pvMoves, label, size) {
+  const wrap  = document.createElement('div'); wrap.className = 'ref-board-wrap';
+  const lbl   = document.createElement('span'); lbl.textContent = label;
+  const c     = document.createElement('canvas'); c.width = c.height = size;
+  drawVarBoard(c, firstMove, pvMoves);
+  wrap.append(c, lbl); container.appendChild(wrap);
+}
+
+function drawVarBoard(c, firstMove, pvMoves) {
+  const ctx2 = c.getContext('2d');
+  const W = c.width, sz = boardSize, pad = W*.055, cell = (W-pad*2)/(sz-1);
+  ctx2.fillStyle = '#dcb468'; ctx2.fillRect(0,0,W,W);
+  ctx2.strokeStyle='#6b5a3e'; ctx2.lineWidth=.6;
+  for (let i=0;i<sz;i++) {
+    const v=pad+i*cell;
+    ctx2.beginPath();ctx2.moveTo(v,pad);ctx2.lineTo(v,pad+(sz-1)*cell);ctx2.stroke();
+    ctx2.beginPath();ctx2.moveTo(pad,v);ctx2.lineTo(pad+(sz-1)*cell,v);ctx2.stroke();
+  }
+  ctx2.strokeStyle='#5a4a2e'; ctx2.lineWidth=1.2;
+  ctx2.strokeRect(pad,pad,(sz-1)*cell,(sz-1)*cell);
+
+  // 現在の盤面
+  const board = Array.from({length:sz},()=>new Array(sz).fill(null));
+  for(let i=0;i<cur&&i<moves.length;i++) {
+    const mv=moves[i]; if(mv.x>=0&&mv.y>=0) board[mv.y][mv.x]=mv.color;
+  }
+  for(let r=0;r<sz;r++) for(let cc=0;cc<sz;cc++) {
+    if(!board[r][cc])continue;
+    drawStone(ctx2,pad+cc*cell,pad+r*cell,cell*.44,board[r][cc]==='B');
+  }
+
+  // 候補手 + 読み筋
+  const nextColor = (cur>0&&moves[cur-1]) ? (moves[cur-1].color==='B'?'W':'B') : 'B';
+  [firstMove,...pvMoves].forEach((mv,i) => {
+    const pos = gtpToXY(mv,sz); if(!pos) return;
+    const isB = (i%2===0) ? (nextColor==='B') : (nextColor==='W');
+    ctx2.globalAlpha = .88;
+    drawStone(ctx2,pad+pos.x*cell,pad+pos.y*cell,cell*.44,isB);
+    ctx2.globalAlpha = 1;
+    ctx2.fillStyle = isB?'#fff':'#333';
+    ctx2.font = `bold ${Math.max(7,cell*.32)}px sans-serif`;
+    ctx2.textAlign='center'; ctx2.textBaseline='middle';
+    ctx2.fillText(i+1,pad+pos.x*cell,pad+pos.y*cell);
+  });
+}
+
+function gtpToXY(gtp, sz) {
+  if (!gtp || gtp.toLowerCase()==='pass') return null;
+  const col = 'ABCDEFGHJKLMNOPQRST';
+  const x = col.indexOf(gtp[0].toUpperCase());
+  const y = sz - parseInt(gtp.slice(1));
+  return (x<0||y<0||y>=sz) ? null : {x,y};
+}
+
+/* ═══════════ EVAL GRAPH ═══════════ */
+function renderEvalGraph() {
+  const canvas2 = document.getElementById('eval-chart');
+  if (!canvas2 || !aiResults) return;
+  if (evalChart) { evalChart.destroy(); evalChart=null; }
+
+  // 棋譜全体の擬似勝率推移（実KataGoなら全手のanalyzeTurnsで取得）
+  const n = moves.length || 10;
+  const labels = [], data = [];
+  let wr = 0.5;
+  for (let i=0;i<=n;i++) {
+    labels.push(i===0?'開始':i+'手');
+    wr += (Math.random()-.5)*.055;
+    wr = Math.max(.05, Math.min(.95, wr));
+    if (i===cur) wr = aiResults.winrate;
+    data.push(+(wr*100).toFixed(1));
+  }
+
+  evalChart = new Chart(canvas2, {
+    type: 'line',
+    data: { labels, datasets:[{
+      label:'黒の勝率(%)', data,
+      borderColor:'#2a6496',
+      backgroundColor:'rgba(42,100,150,.07)',
+      borderWidth:1.5, pointRadius:1.5, pointHoverRadius:4,
+      tension:.3, fill:true,
+    }]},
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      plugins: { legend:{display:false}, tooltip:{callbacks:{label:c=>`黒 ${c.raw}%`}} },
+      scales: {
+        x: { ticks:{font:{size:9},maxTicksLimit:8}, grid:{color:'rgba(0,0,0,.05)'} },
+        y: { min:0, max:100, ticks:{font:{size:9},stepSize:25,callback:v=>v+'%'},
+             grid:{color:'rgba(0,0,0,.07)'} }
+      }
+    }
+  });
+}
+
+/* ═══════════ PURCHASE ═══════════ */
+function openKifuPurchase() {
+  if (!window.CU) { showToast('購入にはログインが必要です'); return; }
+  const name = esc(currentKifu?.title || '');
+  openModal('📖 解説を購入', buildPayHTML(name, 100, 'kifu'));
+}
+function openAIPurchase() {
+  if (!window.CU) { showToast('購入にはログインが必要です'); return; }
+  openModal('🤖 AI解析機能を購入', buildPayHTML('KataGo AI解析（買い切り・全棋譜永続）', 3000, 'ai'));
+}
+
+function buildPayHTML(item, price, type) {
+  return `
+  <p style="font-size:.78rem;color:#5a4a30;line-height:1.8;margin-bottom:.8rem;">${item}</p>
+  <div style="background:var(--paper2);border-radius:5px;padding:.75rem;border:1px solid var(--border);font-size:.74rem;margin-bottom:.9rem;">
+    <div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:5px;font-weight:600;">
+      <span>合計</span><span style="color:var(--accent)">¥${price.toLocaleString()}</span>
+    </div>
+  </div>
+  <button onclick="startCheckout('${type}')" style="width:100%;background:#635bff;color:#fff;border:none;border-radius:5px;padding:10px;font-size:.84rem;font-weight:500;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:7px;">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="white"><path d="M13.976 9.15c-2.172-.806-3.356-1.426-3.356-2.409 0-.831.683-1.305 1.901-1.305 2.227 0 4.515.858 6.09 1.631l.89-5.494C18.252.975 15.697 0 12.165 0 9.667 0 7.589.654 6.104 1.872 4.56 3.147 3.757 4.992 3.757 7.218c0 4.039 2.467 5.76 6.476 7.219 2.585.92 3.445 1.574 3.445 2.583 0 .98-.84 1.545-2.354 1.545-1.875 0-4.965-.921-6.99-2.109l-.9 5.555C5.175 22.99 8.385 24 11.714 24c2.641 0 4.843-.624 6.328-1.813 1.664-1.305 2.525-3.236 2.525-5.732 0-4.128-2.524-5.851-6.591-7.305z"/></svg>
+    Stripeで支払う（¥${price.toLocaleString()}）
+  </button>
+  <p style="font-size:.67rem;color:#9a8060;text-align:center;margin-top:.5rem;">
+    Stripe Cloud Functionsを実装するとご利用いただけます
+  </p>`;
+}
+
+async function startCheckout(type) {
+  /* ── Stripe Checkout Session の作成 ─────────────────────────────────
+     Firebase Cloud Functions 実装例:
+
+     exports.createCheckout = functions.https.onCall(async (data, ctx) => {
+       const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+       const session = await stripe.checkout.sessions.create({
+         payment_method_types: ['card'],
+         line_items: [{ price_data: {
+           currency: 'jpy',
+           product_data: { name: data.name },
+           unit_amount: data.amount
+         }, quantity: 1 }],
+         mode: 'payment',
+         success_url: data.successUrl,
+         cancel_url:  data.cancelUrl,
+         metadata: { userId: ctx.auth.uid, type: data.type, kifuId: data.kifuId || '' }
+       });
+       return { url: session.url };
+     });
+
+     呼び出し例:
+     const fn = firebase.functions().httpsCallable('createCheckout');
+     const { data } = await fn({
+       name:       type==='ai' ? 'AI解析機能' : '棋譜解説: ' + currentKifu.title,
+       amount:     type==='ai' ? 3000 : 100,
+       type,
+       kifuId:     type==='kifu' ? currentKifu.id : '',
+       successUrl: location.origin + location.pathname + '?' +
+                   (type==='ai' ? 'ai_purchased=1' : 'purchased=' + currentKifu.id),
+       cancelUrl:  location.href,
+     });
+     window.location.href = data.url;
+  ───────────────────────────────────────────────────────────────────── */
+  showToast('Stripe Cloud Functions を実装してください', 4000);
   closeModal();
 }
 
-/* ══════════ SGF PARSER ══════════ */
-const SAMPLE_SGF=`(;GM[1]FF[4]SZ[19]KM[6.5]PB[黒番]PW[白番]
-;B[pd]C[右上の星に打ちます。]
-;W[dp]C[左下の星。対角線布石。]
-;B[pq]C[右下の星。三方向展開の形。]
-;W[dd]C[左上の星。四つ星布石。]
-;B[fc]C[小目から挟む形。]
-;W[cf]C[三々に入らず展開。]
-;B[jd]C[上辺に大きく展開。]
-;W[qj]C[右辺に大きく展開。]
-;B[qg]C[右辺の白にケイマで挟む。]
-;W[qn]C[右辺をしっかり展開。])`;
+/* ═══════════ SGF PARSER ═══════════ */
+const SAMPLE_FREE = `(;GM[1]FF[4]SZ[19]KM[6.5]PB[黒]PW[白]
+;B[pd];W[dp];B[pq];W[dd];B[fc];W[cf];B[jd];W[qj];B[qg];W[qn]
+;B[nd];W[lq];B[po];W[np];B[qq];W[jp];B[cn];W[dn];B[co];W[do]
+;B[cp];W[dq];B[bp];W[fq];B[cm];W[dm];B[cl];W[dl];B[ck];W[dk]
+;B[cj];W[dj];B[ci];W[di];B[ch];W[dh];B[cg];W[df];B[ce];W[de]
+;B[cd];W[dc];B[cc];W[cb];B[bc];W[bb];B[ac];W[ab];B[bd];W[be])`;
 
-const SAMPLE_SGF_PREMIUM=`(;GM[1]FF[4]SZ[19]KM[6.5]PB[黒番]PW[白番]
-;B[pd]C[右上の星に打ちます。囲碁序盤の最重要地点の一つ。星は隅の支配と展開のバランスが優れています。]
-;W[dp]C[白は左下の星に展開。対角線上の配置は互いに干渉しにくく、バランスの良い布石です。]
-;B[pq]C[黒は右下の星に。三方向へ展開する理想的な序盤形です。\nREF[pp:qp:rq]\n参考図は黒が三三に入られた場合の基本定石の手順を示しています。]
-;W[dd]C[白が左上の星。四つ星布石が完成しました。\n四つ星は互いに均衡した布石で、局面が広く展開されます。]
-;B[fc]C[黒は白の左上星に対して小目から挟む形を選択。\nこの手は白の星を攻める意図があります。\nREF[ec:dc:fc]\n参考図：白がかかった場合の一例。黒の挟みに対して白は様々な応手があります。]
-;W[cf]C[白は三々に入らず、左辺小目に展開します。黒の挟みに対して距離を置いた応手。]
-;B[jd]C[黒は上辺に大きく展開。白の左上への影響力を牽制しながら、自らの勢力圏を広げます。]
-;W[qj]C[白は右辺に大きく展開。黒の右辺への構えに対してバランスを取る一手。]
-;B[qg]C[黒は右辺の白にケイマで挟む。攻撃的な手で、右辺の主導権を争います。\nREF[qh:rh:qg]\n参考図：白が中央に逃げる変化の一例。]
-;W[qn]C[白は右辺下方に展開。黒の挟みに対して安定した地を確保しに行きます。\n序盤30手の基本的な流れは、互いに広い場所への展開を心がけることが大切です。])`;
+const SAMPLE_PREMIUM = `(;GM[1]FF[4]SZ[19]KM[6.5]PB[黒]PW[白]
+;B[pd]C[右上の星。囲碁序盤の最重要地点の一つ。星は隅の支配と辺への展開のバランスが優れています。]
+;W[dp]C[左下の星。対角線上の配置で互いに干渉しにくい、バランスのよい布石。]
+;B[pq]C[右下の星。三方向への展開形。\nREF[qq:rq:sq]\n参考図：三三への基本定石手順例。]
+;W[dd]C[四つ星布石が完成。均衡した布石で序盤の展開が広がります。]
+;B[fc]C[左上星への小目からの挟み。白の展開を制限する積極的な一手。\nREF[ec:dc:cc]\n参考図：白がかかった場合の応手例。]
+;W[cf]C[三々に入らず小目展開。挟みを無視して独自の布石を優先。]
+;B[jd]C[上辺に大きく展開。黒の影響力が上辺全体に広がります。]
+;W[qj]C[右辺への大きな展開。黒の右辺への構えに対してバランスを取る。]
+;B[qg]C[ケイマで右辺を挟む。攻撃的で右辺の主導権を争います。\nREF[qh:rh:ri]\n参考図：白が中央に逃げる変化例。]
+;W[qn]C[右辺下方への展開。安定した地を確保しに行く実利的な一手。]
+;B[nd]C[上辺を広げながら右上を強化する大きな一手。右上隅の黒石群を強くします。]
+;W[lq]C[下辺に大きな展開。左下の地を広げながら下辺の主導権を争う。]
+;B[po]C[右下隅への補強。白の下辺展開を牽制する重要な一手。]
+;W[np]C[下辺を広げる白の対応。黒の右下への影響力を削ぐ。]
+;B[qq]C[三三の確保。右下隅を確実に地にする実利的な選択。\nREF[rr:sr:ss]\n参考図：白が反発する場合の変化。]
+;W[jp]C[中央への展開。下辺全体の支配を狙う大きな一手。])`;
 
-function parseSGF(text){
-  moves=[]; boardSize=19;
-  const szM=text.match(/SZ\[(\d+)\]/);
-  if(szM) boardSize=parseInt(szM[1]);
-  const re=/;([\s\S]*?)(?=;|\))/g;
-  let m;
-  while((m=re.exec(text))!==null){
-    const node=m[1];
-    const bm=node.match(/B\[([a-z]{0,2})\]/i);
-    const wm=node.match(/W\[([a-z]{0,2})\]/i);
-    const cm=node.match(/C\[([\s\S]*?)(?<!\\)\]/);
-    const comment=cm?cm[1].replace(/\\\]/g,']'):'';
-    if(bm)      moves.push({color:'B',...sgfCoord(bm[1]),comment});
-    else if(wm) moves.push({color:'W',...sgfCoord(wm[1]),comment});
+function parseSGF(text) {
+  moves = []; boardSize = 19;
+  const szM = text.match(/SZ\[(\d+)\]/);
+  if (szM) boardSize = parseInt(szM[1]);
+  // メインラインを順番にパース
+  const nodes = [];
+  let inNode = false, buf = '';
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === ';') { if (inNode && buf.trim()) nodes.push(buf); buf=''; inNode=true; }
+    else if (inNode) buf += ch;
   }
+  if (inNode && buf.trim()) nodes.push(buf);
+  nodes.forEach(node => {
+    const bm = node.match(/B\[([a-z]{0,2})\]/i);
+    const wm = node.match(/W\[([a-z]{0,2})\]/i);
+    const cm = node.match(/C\[([\s\S]*?)(?<!\\)\]/);
+    const comment = cm ? cm[1].replace(/\\\]/g,']') : '';
+    if (bm)      moves.push({ color:'B', ...sgfCoord(bm[1]), comment });
+    else if (wm) moves.push({ color:'W', ...sgfCoord(wm[1]), comment });
+  });
+}
+function sgfCoord(s) {
+  if (!s||s.length<2||s==='tt') return {x:-1,y:-1};
+  return { x:s.charCodeAt(0)-97, y:s.charCodeAt(1)-97 };
 }
 
-function sgfCoord(s){
-  if(!s||s.length<2||s==='tt')return{x:-1,y:-1};
-  return{x:s.charCodeAt(0)-97,y:s.charCodeAt(1)-97};
-}
+/* ═══════════ BOARD DRAW ═══════════ */
+const mainCanvas = document.getElementById('goban');
+const mainCtx    = mainCanvas.getContext('2d');
 
-/* ══════════ BOARD DRAW ══════════ */
-const canvas=document.getElementById('goban');
-const ctx=canvas.getContext('2d');
-
-function drawBoard(upTo,tc,tctx,sz){
-  const W=tc.width, pad=W*0.052, cell=(W-pad*2)/(sz-1);
-  tctx.fillStyle='#dcb468';
-  tctx.fillRect(0,0,W,W);
+function drawBoard(upTo, tc, tctx, sz) {
+  const W=tc.width, pad=W*.052, cell=(W-pad*2)/(sz-1);
+  tctx.fillStyle='#dcb468'; tctx.fillRect(0,0,W,W);
   // 木目
-  tctx.strokeStyle='rgba(150,100,30,.12)';
-  tctx.lineWidth=.6;
-  for(let i=0;i<5;i++){
-    const y=W*(.1+i*.18);
-    tctx.beginPath();tctx.moveTo(0,y);tctx.bezierCurveTo(W*.3,y-4,W*.7,y+4,W,y);tctx.stroke();
-  }
+  tctx.strokeStyle='rgba(140,95,25,.1)'; tctx.lineWidth=.5;
+  for(let i=0;i<4;i++){const y=W*(.08+i*.23);tctx.beginPath();tctx.moveTo(0,y);tctx.bezierCurveTo(W*.35,y-3,W*.65,y+3,W,y);tctx.stroke();}
   // 格子
-  tctx.strokeStyle='#6b5a3e';tctx.lineWidth=.7;
-  for(let i=0;i<sz;i++){
-    const v=pad+i*cell;
+  tctx.strokeStyle='#6b5a3e'; tctx.lineWidth=.75;
+  for(let i=0;i<sz;i++){const v=pad+i*cell;
     tctx.beginPath();tctx.moveTo(v,pad);tctx.lineTo(v,pad+(sz-1)*cell);tctx.stroke();
     tctx.beginPath();tctx.moveTo(pad,v);tctx.lineTo(pad+(sz-1)*cell,v);tctx.stroke();
   }
-  tctx.strokeStyle='#5a4a2e';tctx.lineWidth=1.5;
+  tctx.strokeStyle='#5a4a2e'; tctx.lineWidth=1.5;
   tctx.strokeRect(pad,pad,(sz-1)*cell,(sz-1)*cell);
   // 星
   if(sz===19){
     [[3,3],[3,9],[3,15],[9,3],[9,9],[9,15],[15,3],[15,9],[15,15]].forEach(([sx,sy])=>{
-      tctx.fillStyle='#5a4a2e';
-      tctx.beginPath();tctx.arc(pad+sx*cell,pad+sy*cell,3,0,Math.PI*2);tctx.fill();
+      tctx.fillStyle='#5a4a2e';tctx.beginPath();tctx.arc(pad+sx*cell,pad+sy*cell,3,0,Math.PI*2);tctx.fill();
     });
   }
   // 石
   const board=Array.from({length:sz},()=>new Array(sz).fill(null));
   const limit=Math.min(upTo,moves.length);
   for(let i=0;i<limit;i++){const mv=moves[i];if(mv.x>=0&&mv.y>=0)board[mv.y][mv.x]=mv.color;}
-  for(let r=0;r<sz;r++) for(let c=0;c<sz;c++){
-    if(!board[r][c])continue;
-    drawStone(tctx,pad+c*cell,pad+r*cell,cell*.46,board[r][c]==='B');
+  for(let r=0;r<sz;r++) for(let cc=0;cc<sz;cc++){
+    if(!board[r][cc])continue;
+    drawStone(tctx,pad+cc*cell,pad+r*cell,cell*.46,board[r][cc]==='B');
   }
   // 最後の手マーク
-  if(limit>0){
-    const lv=moves[limit-1];
-    if(lv.x>=0){
-      const cx=pad+lv.x*cell,cy=pad+lv.y*cell;
-      tctx.strokeStyle=lv.color==='B'?'rgba(255,255,255,.8)':'rgba(0,0,0,.6)';
-      tctx.lineWidth=1.5;
-      tctx.beginPath();tctx.arc(cx,cy,cell*.17,0,Math.PI*2);tctx.stroke();
-    }
-  }
+  if(limit>0){const lv=moves[limit-1];if(lv.x>=0){
+    const cx=pad+lv.x*cell,cy=pad+lv.y*cell;
+    tctx.strokeStyle=lv.color==='B'?'rgba(255,255,255,.85)':'rgba(0,0,0,.65)';
+    tctx.lineWidth=1.5;tctx.beginPath();tctx.arc(cx,cy,cell*.17,0,Math.PI*2);tctx.stroke();
+  }}
 }
 
 function drawStone(c,x,y,r,isBlack){
@@ -715,79 +1060,78 @@ function drawStone(c,x,y,r,isBlack){
   if(isBlack){g.addColorStop(0,'#585858');g.addColorStop(.4,'#1c1c1c');g.addColorStop(1,'#060606');}
   else{g.addColorStop(0,'#ffffff');g.addColorStop(.6,'#e8e4dc');g.addColorStop(1,'#c8c4bc');}
   c.beginPath();c.arc(x,y,r,0,Math.PI*2);c.fillStyle=g;c.fill();
-  if(!isBlack){c.strokeStyle='rgba(0,0,0,.2)';c.lineWidth=.5;c.stroke();}
+  if(!isBlack){c.strokeStyle='rgba(0,0,0,.18)';c.lineWidth=.5;c.stroke();}
 }
 
 function drawRefBoard(c,coords,sz){
-  const ctx2=c.getContext('2d');
-  const W=c.width,pad=W*.07,cell=(W-pad*2)/(sz-1);
+  const ctx2=c.getContext('2d');const W=c.width,pad=W*.07,cell=(W-pad*2)/(sz-1);
   ctx2.fillStyle='#dcb468';ctx2.fillRect(0,0,W,W);
   ctx2.strokeStyle='#6b5a3e';ctx2.lineWidth=.5;
-  for(let i=0;i<sz;i++){
-    const v=pad+i*cell;
+  for(let i=0;i<sz;i++){const v=pad+i*cell;
     ctx2.beginPath();ctx2.moveTo(v,pad);ctx2.lineTo(v,pad+(sz-1)*cell);ctx2.stroke();
     ctx2.beginPath();ctx2.moveTo(pad,v);ctx2.lineTo(pad+(sz-1)*cell,v);ctx2.stroke();
   }
+  ctx2.strokeStyle='#5a4a2e';ctx2.lineWidth=1;ctx2.strokeRect(pad,pad,(sz-1)*cell,(sz-1)*cell);
   coords.forEach((coord,idx)=>{
     if(coord.length<2)return;
     const x=coord.charCodeAt(0)-97,y=coord.charCodeAt(1)-97;
     if(x<0||y<0||x>=sz||y>=sz)return;
-    const isBlack=idx%2===0;
-    drawStone(ctx2,pad+x*cell,pad+y*cell,cell*.46,isBlack);
-    ctx2.fillStyle=isBlack?'#fff':'#333';
-    ctx2.font=`bold ${Math.max(7,cell*.35)}px sans-serif`;
+    drawStone(ctx2,pad+x*cell,pad+y*cell,cell*.46,idx%2===0);
+    ctx2.fillStyle=idx%2===0?'#fff':'#333';
+    ctx2.font=`bold ${Math.max(7,cell*.34)}px sans-serif`;
     ctx2.textAlign='center';ctx2.textBaseline='middle';
     ctx2.fillText(idx+1,pad+x*cell,pad+y*cell);
   });
 }
 
-/* ══════════ NAVIGATION ══════════ */
-function updateView(){
-  drawBoard(current,canvas,ctx,boardSize);
-  document.getElementById('move-num').textContent=current;
-  document.getElementById('move-counter').textContent=`${current} / ${moves.length}`;
-  const ind=document.getElementById('stone-indicator');
-  const lbl=document.getElementById('move-label');
-  if(current>0&&moves[current-1]){
-    const mv=moves[current-1];
-    ind.className='stone-dot '+(mv.color==='B'?'b':'w');
-    const col=mv.color==='B'?'黒':'白';
-    const pos=mv.x>=0?`${String.fromCharCode(65+mv.x)}${boardSize-mv.y}`:'パス';
-    lbl.textContent=`第${current}手　${col} ${pos}`;
-  }else{
-    ind.className='stone-dot';
-    lbl.textContent='初期盤面';
+/* ═══════════ NAVIGATION ═══════════ */
+const GTP_COL = 'ABCDEFGHJKLMNOPQRST';
+function updateView() {
+  drawBoard(cur, mainCanvas, mainCtx, boardSize);
+  document.getElementById('move-num').textContent = cur;
+  document.getElementById('move-counter').textContent = `${cur} / ${moves.length}`;
+  const ind = document.getElementById('stone-ind');
+  const lbl = document.getElementById('move-lbl');
+  if (cur>0 && moves[cur-1]) {
+    const mv = moves[cur-1];
+    ind.className = 'stone-dot '+(mv.color==='B'?'b':'w');
+    const col = mv.color==='B'?'黒':'白';
+    const pos = mv.x>=0 ? `${GTP_COL[mv.x]||'?'}${boardSize-mv.y}` : 'パス';
+    lbl.textContent = `第${cur}手　${col} ${pos}`;
+  } else {
+    ind.className = 'stone-dot';
+    lbl.textContent = '初期盤面';
   }
   updateCommentary();
-  document.querySelectorAll('.move-badge').forEach(b=>{
-    b.classList.toggle('current',parseInt(b.dataset.n)===current);
-  });
+  document.querySelectorAll('.mv-badge').forEach(b =>
+    b.classList.toggle('current', parseInt(b.dataset.n)===cur));
 }
 
-function goToMove(n){current=Math.max(0,Math.min(n,moves.length));updateView();}
-function stepMove(d){goToMove(current+d);}
+function goTo(n) { cur = Math.max(0,Math.min(n,moves.length)); updateView(); }
+function step(d) { goTo(cur+d); }
 
-/* ══════════ MOVE BADGES ══════════ */
-function buildMoveBadges(){
-  const area=document.getElementById('moves-area');
-  if(!moves.length){area.innerHTML='<span class="empty">手順がありません</span>';return;}
-  area.innerHTML=moves.map((mv,i)=>{
-    const col=mv.color==='B'?'●':'○';
-    const hc=mv.comment?' has-comment':'';
-    return `<span class="move-badge${hc}" data-n="${i+1}" onclick="goToMove(${i+1})">${i+1}${col}</span>`;
+function buildBadges() {
+  const area = document.getElementById('moves-area');
+  if (!moves.length) { area.innerHTML='<span class="empty">手順がありません</span>'; return; }
+  area.innerHTML = moves.map((mv,i) => {
+    const col = mv.color==='B'?'●':'○';
+    const hc  = mv.comment?' hc':'';
+    return `<span class="mv-badge${hc}" data-n="${i+1}" onclick="goTo(${i+1})">${i+1}${col}</span>`;
   }).join('');
 }
 
-/* ══════════ UTILS ══════════ */
-function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
-
-/* ══════════ INIT ══════════ */
-drawBoard(0,canvas,ctx,19);
+/* ═══════════ INIT ═══════════ */
+drawBoard(0, mainCanvas, mainCtx, 19);
 renderUploadSection();
-renderSampleList();
-document.addEventListener('keydown',e=>{
-  if(e.key==='ArrowRight')stepMove(1);
-  if(e.key==='ArrowLeft')stepMove(-1);
+renderAIPanel();
+loadSampleList();
+
+document.addEventListener('keydown', e => {
+  if (['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName)) return;
+  if (e.key==='ArrowRight') step(1);
+  if (e.key==='ArrowLeft')  step(-1);
+  if (e.key==='ArrowUp')    step(10);
+  if (e.key==='ArrowDown')  step(-10);
 });
 </script>
 </body>
