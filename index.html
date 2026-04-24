@@ -147,7 +147,7 @@ import { getFirestore, doc, setDoc, getDoc, collection, getDocs, addDoc,
 
 // ▼▼▼ Firebaseプロジェクトの設定値に変更してください ▼▼▼
 const firebaseConfig = {
- apiKey: "AIzaSyDMWj2D93inW4a5yziKyBx9twcQsQzKdl0",
+  apiKey: "AIzaSyDMWj2D93inW4a5yziKyBx9twcQsQzKdl0",
   authDomain: "kufu-igo.firebaseapp.com",
   projectId: "kufu-igo",
   storageBucket: "kufu-igo.firebasestorage.app",
@@ -624,7 +624,7 @@ function renderCommentary() {
   }
 }
 
-/* ★ 解説テキストと参考図を手番に合わせて更新 */
+/* ★ 解説テキストと変化図（参考図）を手番に合わせて更新 */
 function updateCommentary() {
   if (!currentKifu || (!currentKifu.hasPurchased && currentKifu.isPremium)) return;
 
@@ -633,52 +633,83 @@ function updateCommentary() {
   if (!ct) return;
 
   const mv = (cur > 0) ? moves[cur - 1] : null;
+
+  // コメントテキスト表示
   const comment = mv?.comment || '';
+  ct.textContent = comment || '（この手のコメントはありません）';
 
-  if (!comment) {
-    ct.textContent = '（この手のコメントはありません）';
-    if (rb) rb.innerHTML = '';
-    return;
+  if (!rb) return;
+  rb.innerHTML = '';
+
+  // 変化図（SGFの括弧分岐）を参考図として表示
+  const variations = mv?.variations || [];
+  if (!variations.length) return;
+
+  variations.forEach((variation, vi) => {
+    // 変化図ラベル（変化図のコメントを使用）
+    const varComment = variation.comment || `変化図 ${vi + 1}`;
+
+    // 変化図のコメントを表示
+    if (variation.comment) {
+      const commentEl = document.createElement('div');
+      commentEl.style.cssText = 'font-size:.76rem;color:#5a4030;margin-bottom:.4rem;padding:.4rem .6rem;background:#fdf7ec;border-radius:4px;border-left:3px solid var(--accent2);';
+      commentEl.textContent = `変化図${vi + 1}：${variation.comment}`;
+      rb.appendChild(commentEl);
+    }
+
+    // 変化図の盤面を描画（現在局面 + 変化図の手順）
+    const wrap = document.createElement('div');
+    wrap.className = 'ref-board-wrap';
+
+    const lbl = document.createElement('span');
+    lbl.textContent = `変化図 ${vi + 1}（${variation.moves.length}手）`;
+
+    const c = document.createElement('canvas');
+    c.className = 'ref-goban';
+    // 盤面サイズに応じてキャンバスサイズを調整
+    const canvasSize = boardSize >= 19 ? 200 : boardSize >= 13 ? 160 : 120;
+    c.width = c.height = canvasSize;
+
+    // 現在局面（メインラインのcurまで）の盤面を取得して変化図を描画
+    drawVariationBoard(c, variation.moves, cur);
+
+    wrap.appendChild(c);
+    wrap.appendChild(lbl);
+    rb.appendChild(wrap);
+  });
+}
+
+/* 変化図盤面の描画: 現在の盤面 + 変化図の手順を番号付きで重ねる */
+function drawVariationBoard(canvas, varMoves, baseUpTo) {
+  const ctx2 = canvas.getContext('2d');
+  const sz = boardSize;
+  const { pad, cell } = drawBoardBase(canvas, ctx2, sz);
+
+  // 現在のメインライン盤面（石取り適用済み）
+  const { board } = getBoardAt(baseUpTo);
+  for (let r=0; r<sz; r++) for (let cc=0; cc<sz; cc++) {
+    if (!board[r][cc]) continue;
+    drawStone(ctx2, pad+cc*cell, pad+r*cell, cell*.44, board[r][cc]==='B');
   }
 
-  // REF[...] を抽出して参考図を描画
-  // 形式: REF[pd:qd:rd] または REF[pd:qd:rd][pe:qe] など複数可
-  const refPattern = /REF\[([^\]]+)\]/g;
-  const refs = [];
-  let m;
-  while ((m = refPattern.exec(comment)) !== null) {
-    refs.push(m[1]);
-  }
+  // 変化図の手を番号付きで描画
+  const nextColor = (baseUpTo > 0 && moves[baseUpTo-1])
+    ? (moves[baseUpTo-1].color === 'B' ? 'W' : 'B')
+    : 'B';
 
-  // REFタグを除いた純粋なコメントテキスト
-  const displayText = comment.replace(/REF\[[^\]]*\]/g, '').trim();
-  ct.textContent = displayText || '（コメントなし）';
-
-  // 参考図描画
-  if (rb) {
-    rb.innerHTML = '';
-    refs.forEach((coordStr, i) => {
-      // コロン区切りでSGF座標（例: "pd", "qd"）のリスト
-      const coords = coordStr.split(':').map(c => c.trim()).filter(c => c.length >= 2);
-      if (!coords.length) return;
-
-      const wrap = document.createElement('div');
-      wrap.className = 'ref-board-wrap';
-
-      const lbl = document.createElement('span');
-      lbl.textContent = `参考図 ${i + 1}`;
-
-      const c = document.createElement('canvas');
-      c.className = 'ref-goban';
-      c.width  = 160;
-      c.height = 160;
-      drawRefBoard(c, coords, boardSize);
-
-      wrap.appendChild(c);
-      wrap.appendChild(lbl);
-      rb.appendChild(wrap);
-    });
-  }
+  varMoves.forEach((vm, i) => {
+    if (vm.x < 0 || vm.y < 0) return; // パス
+    // 変化図は交互に黒白（nextColorから始まる）
+    const isBlack = (i % 2 === 0) ? (nextColor === 'B') : (nextColor === 'W');
+    ctx2.globalAlpha = 0.88;
+    drawStone(ctx2, pad+vm.x*cell, pad+vm.y*cell, cell*.44, isBlack);
+    ctx2.globalAlpha = 1;
+    ctx2.fillStyle = isBlack ? '#fff' : '#333';
+    ctx2.font = `bold ${Math.max(7, Math.floor(cell*.34))}px sans-serif`;
+    ctx2.textAlign = 'center';
+    ctx2.textBaseline = 'middle';
+    ctx2.fillText(String(i + 1), pad+vm.x*cell, pad+vm.y*cell);
+  });
 }
 
 /* ═══════════════════════════════════════
@@ -721,88 +752,152 @@ async function startCheckout() {
 }
 
 /* ═══════════════════════════════════════
-   SGFパーサー
-   ★ 文字化け対策済み・コメント内の特殊文字対応
+   SGFパーサー（完全版）
+   ・Shift_JIS / UTF-8 自動判定はreadSGFFile()で実施済み
+   ・メインライン + 変化図（括弧分岐）を正しく解析
+   ・C[...] 内のエスケープ・ネスト対応
 ═══════════════════════════════════════ */
+
+function sgfXY(s) {
+  if (!s || s.length < 2 || s === 'tt') return { x:-1, y:-1 };
+  return { x: s.charCodeAt(0) - 97, y: s.charCodeAt(1) - 97 };
+}
+
+// ブラケット内容を正しく抽出（エスケープ対応）
+function extractBracket(text, startIdx) {
+  // startIdx は '[' の直後
+  let result = '', depth = 0, i = startIdx;
+  while (i < text.length) {
+    const ch = text[i];
+    if (ch === '\\') { i++; if (i < text.length) result += text[i]; }
+    else if (ch === '[') { depth++; result += ch; }
+    else if (ch === ']') {
+      if (depth === 0) return { value: result, end: i };
+      depth--; result += ch;
+    } else { result += ch; }
+    i++;
+  }
+  return { value: result, end: i };
+}
+
+// ノード文字列からプロパティを取得
+function getNodeProps(nodeStr) {
+  const props = {};
+  const re = /([A-Z]+)\[/g;
+  let m;
+  while ((m = re.exec(nodeStr)) !== null) {
+    const key = m[1];
+    const { value } = extractBracket(nodeStr, m.index + key.length + 1);
+    if (!props[key]) props[key] = [];
+    props[key].push(value);
+  }
+  return props;
+}
+
+// SGFツリーを再帰的にパース
+// 戻り値: { nodes: [{props, children:[subtree]}] }
+function parseSGFTree(text, pos) {
+  const sequence = []; // このシーケンスのノード列
+  let i = pos;
+  while (i < text.length) {
+    const ch = text[i];
+    if (ch === ';') {
+      // ノード開始
+      i++;
+      let nodeStr = '';
+      while (i < text.length && text[i] !== ';' && text[i] !== '(' && text[i] !== ')') {
+        if (text[i] === '[') {
+          nodeStr += '[';
+          i++;
+          // ブラケット内をそのままコピー
+          let depth = 0;
+          while (i < text.length) {
+            const c = text[i];
+            if (c === '\\') { nodeStr += c; i++; if (i < text.length) { nodeStr += text[i]; i++; } continue; }
+            if (c === '[') depth++;
+            if (c === ']') {
+              if (depth === 0) { nodeStr += c; i++; break; }
+              depth--;
+            }
+            nodeStr += c; i++;
+          }
+        } else {
+          nodeStr += text[i]; i++;
+        }
+      }
+      const props = getNodeProps(nodeStr);
+      sequence.push({ props, children: [] });
+    } else if (ch === '(') {
+      // 変化図（子ツリー）
+      i++;
+      const { nodes: childNodes, end } = parseSGFTree(text, i);
+      i = end + 1; // ')' の次
+      if (sequence.length > 0) {
+        sequence[sequence.length - 1].children.push(childNodes);
+      }
+    } else if (ch === ')') {
+      return { nodes: sequence, end: i };
+    } else {
+      i++;
+    }
+  }
+  return { nodes: sequence, end: i };
+}
+
 function parseSGF(text) {
   moves       = [];
   boardSize   = 19;
   playerBlack = '黒';
   playerWhite = '白';
 
-  // 盤サイズ
-  const szM = text.match(/SZ\[(\d+)\]/);
-  if (szM) boardSize = parseInt(szM[1]);
+  // ルートの '(' を探す
+  const rootStart = text.indexOf('(');
+  if (rootStart < 0) return;
 
-  // 対局者名（SGFのPB/PWタグ）
-  const pbM = text.match(/PB\[([^\]]+)\]/);
-  const pwM = text.match(/PW\[([^\]]+)\]/);
-  if (pbM) playerBlack = pbM[1].trim();
-  if (pwM) playerWhite = pwM[1].trim();
+  const { nodes } = parseSGFTree(text, rootStart + 1);
 
-  // ★ コメントを正しく抽出するパーサー
-  // SGFのC[...]はエスケープ文字 '\' と、ネストした [...] (例: REF[xx:yy]) に注意
-  function extractComment(nodeStr) {
-    const idx = nodeStr.search(/C\[/);
-    if (idx < 0) return '';
-    let i = idx + 2;
-    let result = '';
-    let bracketDepth = 0; // C[ 内のネストした [ ] の深さ
-    while (i < nodeStr.length) {
-      const ch = nodeStr[i];
-      if (ch === '\\') {
-        i++;
-        if (i < nodeStr.length) result += nodeStr[i];
-      } else if (ch === '[') {
-        bracketDepth++;
-        result += ch;
-      } else if (ch === ']') {
-        if (bracketDepth === 0) break; // C[...] の終端
-        bracketDepth--;
-        result += ch;
-      } else {
-        result += ch;
+  // ヘッダーノード（最初のノード）から情報取得
+  if (nodes.length > 0) {
+    const hp = nodes[0].props;
+    if (hp.SZ) boardSize = parseInt(hp.SZ[0]) || 19;
+    if (hp.PB && hp.PB[0].trim()) playerBlack = hp.PB[0].trim();
+    if (hp.PW && hp.PW[0].trim()) playerWhite = hp.PW[0].trim();
+  }
+
+  // ノード列をメインラインとして moves に変換
+  for (const node of nodes) {
+    const p = node.props;
+    const comment = (p.C && p.C[0]) ? p.C[0] : '';
+
+    // 変化図: このノードの children を参考図として収集
+    const variations = node.children.map(childNodes => {
+      const varMoves = [];
+      for (const vn of childNodes) {
+        const vp = vn.props;
+        const vc = (vp.C && vp.C[0]) ? vp.C[0] : '';
+        if (vp.B) {
+          varMoves.push({ color:'B', ...sgfXY(vp.B[0]), comment: vc });
+        } else if (vp.W) {
+          varMoves.push({ color:'W', ...sgfXY(vp.W[0]), comment: vc });
+        } else if (vc) {
+          // 手なし・コメントのみのノード
+          varMoves.push({ color:null, x:-1, y:-1, comment: vc });
+        }
       }
-      i++;
-    }
-    return result;
-  }
+      // 変化図全体のコメント = 最後のコメントノード or 最初のコメント
+      const varComment = varMoves.reduce((acc, vm) => vm.comment || acc, '');
+      return { moves: varMoves, comment: varComment };
+    }).filter(v => v.moves.length > 0);
 
-  // ★ ノードを正しく分割
-  // [ ] の中のセミコロンや括弧は無視する
-  const nodePositions = [];
-  let depth = 0, inBracket = 0;
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i];
-    if (inBracket > 0) {
-      // ブラケット内: エスケープと閉じ括弧だけ処理
-      if (ch === '\\') { i++; continue; } // エスケープをスキップ
-      if (ch === ']') inBracket--;
-      continue;
+    if (p.B) {
+      moves.push({ color:'B', ...sgfXY(p.B[0]), comment, variations });
+    } else if (p.W) {
+      moves.push({ color:'W', ...sgfXY(p.W[0]), comment, variations });
     }
-    if (ch === '[')      { inBracket++; continue; }
-    if (ch === '(')      { depth++; continue; }
-    if (ch === ')')      { depth--; continue; }
-    if (ch === ';' && depth === 1) nodePositions.push(i);
-  }
-
-  // 各ノードからB/W/コメントを抽出
-  for (let ni = 0; ni < nodePositions.length; ni++) {
-    const start = nodePositions[ni];
-    const end   = ni + 1 < nodePositions.length ? nodePositions[ni + 1] : text.length;
-    const node  = text.slice(start, end);
-    const bm    = node.match(/B\[([a-z]{0,2})\]/i);
-    const wm    = node.match(/W\[([a-z]{0,2})\]/i);
-    const comment = extractComment(node);
-    if (bm)      moves.push({ color:'B', ...sgfXY(bm[1]), comment });
-    else if (wm) moves.push({ color:'W', ...sgfXY(wm[1]), comment });
+    // ヘッダーノード（B/Wなし）はスキップ
   }
 }
 
-function sgfXY(s) {
-  if (!s || s.length < 2 || s === 'tt') return { x:-1, y:-1 };
-  return { x: s.charCodeAt(0) - 97, y: s.charCodeAt(1) - 97 };
-}
 
 /* ═══════════════════════════════════════
    囲碁ルール: 石取り + アゲハマ計算
