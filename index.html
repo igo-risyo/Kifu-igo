@@ -1,468 +1,602 @@
 <!DOCTYPE html>
-<html>
+<html lang="ja">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-<script src="https://cdn.jsdelivr.net/npm/wgo@2.3.1/wgo.min.js"></script>
-
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
-
+<title>棋譜共有サービス</title>
 <style>
-body { font-family:sans-serif; }
-button { padding:10px; margin:5px; }
-textarea, input { width:100%; margin:5px 0; }
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@400;600;700&family=Noto+Sans+JP:wght@300;400;500&display=swap');
+
+  :root {
+    --ink: #1a1209;
+    --paper: #f5f0e8;
+    --paper2: #ede7d9;
+    --stone-b: #2c2c2c;
+    --stone-w: #f0ede6;
+    --accent: #8b3a0f;
+    --accent2: #c9a96e;
+    --border: #c8b89a;
+    --shadow: rgba(26,18,9,0.12);
+    --grid: #6b5a3e;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Noto Sans JP', sans-serif;
+    background: var(--paper);
+    color: var(--ink);
+    min-height: 100vh;
+  }
+
+  /* ── ヘッダー ── */
+  header {
+    background: var(--ink);
+    color: var(--paper);
+    padding: 0 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 56px;
+    box-shadow: 0 2px 8px var(--shadow);
+  }
+  .logo {
+    font-family: 'Noto Serif JP', serif;
+    font-size: 1.1rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    color: var(--accent2);
+  }
+
+  /* ── Googleログインボタン ── */
+  #btn-login {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #fff;
+    color: #3c4043;
+    border: 1px solid #dadce0;
+    border-radius: 4px;
+    padding: 7px 14px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: box-shadow .15s, background .15s;
+    font-family: 'Noto Sans JP', sans-serif;
+  }
+  #btn-login:hover { box-shadow: 0 1px 4px rgba(0,0,0,.2); background: #f8f8f8; }
+  #btn-login svg { flex-shrink: 0; }
+
+  #user-info {
+    display: none;
+    align-items: center;
+    gap: 10px;
+    color: var(--paper2);
+    font-size: 13px;
+  }
+  #user-avatar {
+    width: 30px; height: 30px; border-radius: 50%;
+    object-fit: cover; border: 2px solid var(--accent2);
+  }
+  #btn-logout {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--paper2);
+    border-radius: 4px;
+    padding: 4px 10px;
+    font-size: 12px;
+    cursor: pointer;
+    font-family: 'Noto Sans JP', sans-serif;
+  }
+  #btn-logout:hover { background: rgba(255,255,255,.1); }
+
+  /* ── メインレイアウト ── */
+  main {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 1.5rem 1.5rem;
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    gap: 1.5rem;
+  }
+
+  @media (max-width: 768px) {
+    main { grid-template-columns: 1fr; }
+  }
+
+  /* ── カード共通 ── */
+  .card {
+    background: var(--stone-w);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1.2rem;
+    box-shadow: 0 2px 6px var(--shadow);
+  }
+  .card h2 {
+    font-family: 'Noto Serif JP', serif;
+    font-size: .95rem;
+    font-weight: 600;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: .6rem;
+    margin-bottom: 1rem;
+    color: var(--accent);
+    letter-spacing: .05em;
+  }
+
+  /* ── アップロードエリア ── */
+  #upload-zone {
+    border: 2px dashed var(--border);
+    border-radius: 6px;
+    padding: 1.5rem;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color .2s, background .2s;
+    color: #6b5a3e;
+    font-size: .85rem;
+    line-height: 1.8;
+  }
+  #upload-zone:hover, #upload-zone.drag { border-color: var(--accent); background: #faf6ef; }
+  #upload-zone .icon { font-size: 2rem; margin-bottom: .4rem; display: block; }
+  #file-input { display: none; }
+
+  /* ── 棋譜リスト ── */
+  #kifu-list { list-style: none; display: flex; flex-direction: column; gap: 6px; }
+  #kifu-list li {
+    background: var(--paper2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 8px 12px;
+    cursor: pointer;
+    font-size: .85rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: background .15s, border-color .15s;
+  }
+  #kifu-list li:hover { background: #e8dfd0; border-color: var(--accent); }
+  #kifu-list li.active { background: #f0e4d0; border-color: var(--accent); font-weight: 500; }
+  .kifu-meta { color: #7a6650; font-size: .75rem; }
+
+  /* ── 右側パネル ── */
+  .right-col { display: flex; flex-direction: column; gap: 1.2rem; }
+
+  /* ── 囲碁盤 ── */
+  #board-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: .8rem;
+  }
+  #board-title {
+    font-family: 'Noto Serif JP', serif;
+    font-size: .9rem;
+    color: var(--accent);
+    font-weight: 600;
+  }
+  canvas#goban {
+    border: 2px solid var(--grid);
+    border-radius: 2px;
+    box-shadow: 3px 3px 10px var(--shadow);
+    background: #dcb468;
+    max-width: 100%;
+  }
+
+  /* ── コントロール ── */
+  #controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .ctrl-btn {
+    background: var(--ink);
+    color: var(--paper);
+    border: none;
+    border-radius: 4px;
+    padding: 6px 14px;
+    font-size: .8rem;
+    cursor: pointer;
+    font-family: 'Noto Sans JP', sans-serif;
+    transition: background .15s;
+  }
+  .ctrl-btn:hover { background: #3a2e1a; }
+  .ctrl-btn:disabled { background: #aaa; cursor: default; }
+  #move-counter {
+    font-size: .85rem;
+    color: var(--accent);
+    font-weight: 500;
+    min-width: 80px;
+    text-align: center;
+  }
+
+  /* ── 手順リスト ── */
+  #moves-area {
+    max-height: 160px;
+    overflow-y: auto;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 4px 0;
+  }
+  .move-badge {
+    background: var(--paper2);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 2px 8px;
+    font-size: .75rem;
+    cursor: pointer;
+    transition: background .1s;
+  }
+  .move-badge:hover { background: #e0d5c0; }
+  .move-badge.current { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+  /* ── 解説 ── */
+  #comment-area {
+    font-size: .85rem;
+    color: #4a3a2a;
+    line-height: 1.8;
+    min-height: 48px;
+  }
+
+  /* ── ログイン誘導 ── */
+  #login-notice {
+    background: #fdf6ec;
+    border: 1px solid var(--accent2);
+    border-radius: 6px;
+    padding: 1rem;
+    text-align: center;
+    font-size: .85rem;
+    color: #6b4a1a;
+    margin-bottom: .8rem;
+  }
+
+  /* ── タブ ── */
+  .tabs { display: flex; gap: 4px; margin-bottom: .8rem; }
+  .tab {
+    padding: 4px 14px;
+    border-radius: 4px 4px 0 0;
+    border: 1px solid var(--border);
+    border-bottom: none;
+    background: var(--paper2);
+    cursor: pointer;
+    font-size: .8rem;
+    transition: background .15s;
+  }
+  .tab.active { background: var(--stone-w); font-weight: 500; color: var(--accent); }
 </style>
 </head>
-
 <body>
 
-<h2>棋譜共有サービス</h2>
-
-<button id="loginBtn">Googleログイン</button>
-<p id="userInfo"></p>
-
-<hr>
-
-<input type="file" id="fileInput">
-<input id="black" placeholder="黒 名前">
-<input id="blackRank" placeholder="黒 段位">
-<input id="white" placeholder="白 名前">
-<input id="whiteRank" placeholder="白 段位">
-<input id="place" placeholder="対局場所">
-<input id="time" placeholder="持ち時間">
-
-<button id="uploadBtn">棋譜アップロード</button>
-
-<hr>
-
-<h3>棋譜一覧</h3>
-<button onclick="loadList()">一覧</button>
-<button onclick="loadRanking()">ランキング</button>
-<input id="searchInput" placeholder="棋士検索">
-<button onclick="searchKifu()">検索</button>
-
-<div id="list"></div>
-
-<hr>
-
-<div id="board"></div>
-
-<h3>手数：<span id="moveNum">0</span></h3>
-
-<textarea id="commentInput" placeholder="解説"></textarea>
-<textarea id="refInput" placeholder="参考図SGF"></textarea>
-<button onclick="addComment()">この手に追加</button>
-
-<h3>解説</h3>
-<p id="commentBox"></p>
-
-<div id="refBoard"></div>
-
-<script>
-const firebaseConfig = {
-apiKey: "AIzaSyDMWj2D93inW4a5yziKyBx9twcQsQzKdl0",
-authDomain: "kufu-igo.firebaseapp.com",
-projectId: "kufu-igo",
-storageBucket: "kufu-igo.firebasestorage.app",
-messagingSenderId: "810543494533",
-appId: "1:810543494533:web:c7ae9ccc1769128696c0ec"
-};
-
-firebase.initializeApp(firebaseConfig);
-
-const db = firebase.firestore();
-const auth = firebase.auth();
-
-let user;
-let comments = [];
-let currentMove = 0;
-
-// ログイン
-document.getElementById("loginBtn").onclick = async () => {
-const provider = new firebase.auth.GoogleAuthProvider();
-await auth.signInWithPopup(provider);
-};
-
-auth.onAuthStateChanged(u => {
-if(u){
-user = u;
-document.getElementById("userInfo").innerText = u.email;
-loadList();
-}
-});
-
-// アップロード
-document.getElementById("uploadBtn").onclick = () => {
-const file = document.getElementById("fileInput").files[0];
-const reader = new FileReader();
-
-reader.onload = async e => {
-await db.collection("kifu").add({
-sgf: e.target.result,
-black: document.getElementById("black").value,
-blackRank: document.getElementById("blackRank").value,
-white: document.getElementById("white").value,
-whiteRank: document.getElementById("whiteRank").value,
-place: document.getElementById("place").value,
-time: document.getElementById("time").value,
-comments: comments,
-views: 0
-});
-alert("保存完了");
-loadList();
-};
-
-reader.readAsText(file);
-};
-
-// 一覧
-async function loadList(){
-const snap = await db.collection("kifu").get();
-const list = document.getElementById("list");
-list.innerHTML = "";
-
-snap.forEach(doc=>{
-const d = doc.data();
-list.innerHTML += `
-<button onclick="view('${doc.id}')">
-${d.place || ""}<br>
-黒 ${d.black} (${d.blackRank || ""})
-- 白 ${d.white} (${d.whiteRank || ""})
-</button><br>`;
-});
-}
-
-// 表示
-async function view(id){
-const doc = await db.collection("kifu").doc(id).get();
-const data = doc.data();
-
-await db.collection("kifu").doc(id).update({
-views: firebase.firestore.FieldValue.increment(1)
-});
-
-comments = data.comments || [];
-
-document.getElementById("board").innerHTML = "";
-
-const player = new WGo.BasicPlayer(
-document.getElementById("board"),
-{ sgf: data.sgf }
-);
-
-player.addEventListener("update", e=>{
-currentMove = e.node.moveNumber || 0;
-document.getElementById("moveNum").innerText = currentMove;
-showComment();
-});
-}
-
-// コメント追加
-function addComment(){
-const text = document.getElementById("commentInput").value;
-const ref = document.getElementById("refInput").value;
-
-const idx = comments.findIndex(c=>c.move===currentMove);
-
-if(idx>=0){
-comments[idx] = { move: currentMove, text, ref };
-} else {
-comments.push({ move: currentMove, text, ref });
-}
-
-alert("追加しました");
-}
-
-// 表示
-function showComment(){
-const c = comments.find(x=>x.move===currentMove);
-
-const commentBox = document.getElementById("commentBox");
-const refBoard = document.getElementById("refBoard");
-
-commentBox.innerText = "";
-refBoard.innerHTML = "";
-
-if(c){
-commentBox.innerText = c.text;
-if(c.ref){
-new WGo.BasicPlayer(refBoard, { sgf: c.ref });
-}
-}
-}
-
-// 検索
-async function searchKifu(){
-const key = document.getElementById("searchInput").value;
-const snap = await db.collection("kifu").get();
-const list = document.getElementById("list");
-
-list.innerHTML = "";
-
-snap.forEach(doc=>{
-const d = doc.data();
-
-if(
-(d.black && d.black.includes(key)) ||
-(d.white && d.white.includes(key))
-){
-list.innerHTML += `
-<button onclick="view('${doc.id}')">
-${d.place || ""}<br>
-黒 ${d.black} (${d.blackRank || ""})
-- 白 ${d.white} (${d.whiteRank || ""})
-</button><br>`;
-}
-});
-}
-
-// ランキング
-async function loadRanking(){
-const snap = await db.collection("kifu")
-.orderBy("views","desc")
-.limit(10)
-.get();
-
-const list = document.getElementById("list");
-list.innerHTML = "<h3>ランキング</h3>";
-
-let i = 1;
-
-snap.forEach(doc=>{
-const d = doc.data();
-
-list.innerHTML += `
-${i}位
-<button onclick="view('${doc.id}')">
-${d.place || ""}<br>
-黒 ${d.black} (${d.blackRank || ""})
-- 白 ${d.white} (${d.whiteRank || ""})
-(${d.views||0})
-</button><br>`;
-
-i++;
-});
-}
-</script>
-
-</body>
-</html>
-
-
-2026年4月22日(水) 9:48 小西 理章 <taitorutoruzo225@outlook.jp>:
-<!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-<script src="https://cdn.jsdelivr.net/npm/wgo@2.3.1/wgo.min.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
-
-<style>
-body { font-family:sans-serif; }
-button { padding:10px; margin:5px; }
-textarea, input { width:100%; margin:5px 0; }
-</style>
-</head>
-
-<body>
-
-<h2>棋譜共有サービス</h2>
-
-<button id="loginBtn">Googleログイン</button>
-<p id="userInfo"></p>
-
-<hr>
-
-<input type="file" id="fileInput">
-<input id="black" placeholder="黒">
-<input id="white" placeholder="白">
-<input id="time" placeholder="持ち時間">
-
-<button id="uploadBtn">棋譜アップロード</button>
-
-<hr>
-
-<h3>棋譜一覧</h3>
-<button onclick="loadList()">一覧</button>
-<button onclick="loadRanking()">ランキング</button>
-<input id="searchInput" placeholder="棋士検索">
-<button onclick="searchKifu()">検索</button>
-
-<div id="list"></div>
-
-<hr>
-
-<div id="board"></div>
-
-<h3>手数：<span id="moveNum">0</span></h3>
-
-<textarea id="commentInput" placeholder="解説"></textarea>
-<textarea id="refInput" placeholder="参考図SGF"></textarea>
-<button onclick="addComment()">この手に追加</button>
-
-<h3>解説</h3>
-<p id="commentBox"></p>
-
-<div id="refBoard"></div>
-
-<script>
-// Firebase設定（自分のに変更）
-const firebaseConfig = {
-  apiKey: "AIzaSyDMWj2D93inW4a5yziKyBx9twcQsQzKdl0",
+<!-- Firebase SDK -->
+<script type="module">
+  import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+  import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged }
+    from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+
+  // ▼▼▼ ここをご自身のFirebaseプロジェクトの設定に変更してください ▼▼▼
+  const firebaseConfig = {
+   apiKey: "AIzaSyDMWj2D93inW4a5yziKyBx9twcQsQzKdl0",
   authDomain: "kufu-igo.firebaseapp.com",
   projectId: "kufu-igo",
   storageBucket: "kufu-igo.firebasestorage.app",
   messagingSenderId: "810543494533",
-  appId: "1:810543494533:web:c7ae9ccc1769128696c0ec",
-  measurementId: "G-Q1TX0GLCZD"
-};
+  appId: "1:810543494533:web:c7ae9ccc1769128696c0ec"
+   };
+  // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
 
-firebase.initializeApp(firebaseConfig);
-const db = firebase.firestore();
-const auth = firebase.auth();
+  const app  = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const provider = new GoogleAuthProvider();
 
-let user;
-let comments = [];
-let currentMove = 0;
+  window._firebaseAuth     = auth;
+  window._googleProvider   = provider;
+  window._firebaseSignIn   = () => signInWithPopup(auth, provider);
+  window._firebaseSignOut  = () => signOut(auth);
 
-// ログイン
-loginBtn.onclick = async () => {
-const provider = new firebase.auth.GoogleAuthProvider();
-await auth.signInWithPopup(provider);
-};
+  onAuthStateChanged(auth, user => {
+    const loginBtn  = document.getElementById('btn-login');
+    const userInfo  = document.getElementById('user-info');
+    const userName  = document.getElementById('user-name');
+    const userAvatar= document.getElementById('user-avatar');
+    const notice    = document.getElementById('login-notice');
 
-auth.onAuthStateChanged(u => {
-if(u){
-user = u;
-userInfo.innerText = u.email;
-loadList();
+    if (user) {
+      loginBtn.style.display  = 'none';
+      userInfo.style.display  = 'flex';
+      userName.textContent    = user.displayName || user.email;
+      userAvatar.src          = user.photoURL || '';
+      if (notice) notice.style.display = 'none';
+    } else {
+      loginBtn.style.display  = 'flex';
+      userInfo.style.display  = 'none';
+      if (notice) notice.style.display = 'block';
+    }
+  });
+</script>
+
+<!-- ヘッダー -->
+<header>
+  <div class="logo">碁　棋譜共有</div>
+  <div style="display:flex;align-items:center;gap:10px;">
+    <button id="btn-login" onclick="window._firebaseSignIn && window._firebaseSignIn().catch(e=>alert('ログイン失敗: '+e.message))">
+      <svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"/><path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z"/><path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 6.29C4.672 4.163 6.656 3.58 9 3.58z"/></svg>
+      Googleでログイン
+    </button>
+    <div id="user-info">
+      <img id="user-avatar" src="" alt="avatar">
+      <span id="user-name" style="font-size:13px;"></span>
+      <button id="btn-logout" onclick="window._firebaseSignOut && window._firebaseSignOut()">ログアウト</button>
+    </div>
+  </div>
+</header>
+
+<!-- メイン -->
+<main>
+  <!-- 左カラム -->
+  <div style="display:flex;flex-direction:column;gap:1.2rem;">
+
+    <!-- アップロード -->
+    <div class="card">
+      <h2>棋譜アップロード</h2>
+      <div id="login-notice">アップロードにはGoogleログインが必要です</div>
+      <div id="upload-zone" onclick="document.getElementById('file-input').click()"
+           ondragover="event.preventDefault();this.classList.add('drag')"
+           ondragleave="this.classList.remove('drag')"
+           ondrop="handleDrop(event)">
+        <span class="icon">⬆</span>
+        SGFファイルをドラッグ＆ドロップ<br>またはクリックして選択
+      </div>
+      <input type="file" id="file-input" accept=".sgf" onchange="loadFile(this.files[0])">
+    </div>
+
+    <!-- 棋譜一覧 -->
+    <div class="card" style="flex:1;">
+      <h2>棋譜一覧</h2>
+      <div class="tabs">
+        <div class="tab active">一覧</div>
+        <div class="tab">ランキング</div>
+      </div>
+      <ul id="kifu-list">
+        <li style="color:#999;font-size:.8rem;cursor:default;">棋譜をアップロードすると表示されます</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- 右カラム -->
+  <div class="right-col">
+
+    <!-- 盤面 -->
+    <div class="card">
+      <h2>盤面（序盤30手）</h2>
+      <div id="board-wrap">
+        <div id="board-title">手数：<span id="move-num">0</span></div>
+        <canvas id="goban" width="450" height="450"></canvas>
+        <div id="controls">
+          <button class="ctrl-btn" onclick="goToMove(0)">|◀</button>
+          <button class="ctrl-btn" onclick="stepMove(-1)">◀</button>
+          <span id="move-counter">0 / 0手</span>
+          <button class="ctrl-btn" onclick="stepMove(1)">▶</button>
+          <button class="ctrl-btn" onclick="goToMove(Math.min(moves.length,30))">▶|</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 手順 -->
+    <div class="card">
+      <h2>手順（序盤30手）</h2>
+      <div id="moves-area"><span style="color:#999;font-size:.8rem;">棋譜を読み込むと表示されます</span></div>
+    </div>
+
+    <!-- 解説 -->
+    <div class="card">
+      <h2>解説</h2>
+      <div id="comment-area">棋譜を選択すると解説が表示されます。</div>
+    </div>
+
+  </div>
+</main>
+
+<!-- ── SGFパーサー + 描画 ── -->
+<script>
+/* ========== SGFパーサー ========== */
+let moves   = [];   // [{color:'B'|'W', x, y, comment}]
+let current = 0;
+let boardSize = 19;
+
+function parseSGF(text) {
+  moves = [];
+  boardSize = 19;
+
+  // 盤サイズ
+  const szM = text.match(/SZ\[(\d+)\]/);
+  if (szM) boardSize = parseInt(szM[1]);
+
+  // ノードを順番に取り出す
+  const re = /;([\s\S]*?)(?=;|\))/g;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    const node = m[1];
+    const bm = node.match(/B\[([a-z]{0,2})\]/i);
+    const wm = node.match(/W\[([a-z]{0,2})\]/i);
+    const cm = node.match(/C\[([\s\S]*?)\]/);
+    const comment = cm ? cm[1].replace(/\\\]/g,']') : '';
+
+    if (bm) {
+      const [x,y] = sgfCoord(bm[1]);
+      moves.push({color:'B', x, y, comment});
+    } else if (wm) {
+      const [x,y] = sgfCoord(wm[1]);
+      moves.push({color:'W', x, y, comment});
+    }
+  }
 }
-});
 
-// アップロード
-uploadBtn.onclick = () => {
-const file = fileInput.files[0];
-const reader = new FileReader();
-
-reader.onload = async e => {
-await db.collection("kifu").add({
-sgf: e.target.result,
-black: black.value,
-white: white.value,
-time: time.value,
-comments: comments,
-views: 0
-});
-alert("保存完了");
-loadList();
-};
-
-reader.readAsText(file);
-};
-
-// 一覧
-async function loadList(){
-const snap = await db.collection("kifu").get();
-list.innerHTML="";
-snap.forEach(doc=>{
-const d = doc.data();
-list.innerHTML += `<button onclick="view('${doc.id}')">
-黒 ${d.black} - 白 ${d.white}
-</button><br>`;
-});
+function sgfCoord(s) {
+  if (!s || s.length < 2) return [-1,-1]; // パス
+  return [s.charCodeAt(0)-97, s.charCodeAt(1)-97];
 }
 
-// 表示
-async function view(id){
-const doc = await db.collection("kifu").doc(id).get();
-const data = doc.data();
+/* ========== 盤面描画 ========== */
+const canvas = document.getElementById('goban');
+const ctx    = canvas.getContext('2d');
 
-await db.collection("kifu").doc(id).update({
-views: firebase.firestore.FieldValue.increment(1)
-});
+function drawBoard(upTo) {
+  const size = boardSize;
+  const W = canvas.width;
+  const pad = W * 0.055;
+  const cell = (W - pad*2) / (size-1);
 
-comments = data.comments || [];
+  // 盤面背景
+  ctx.fillStyle = '#dcb468';
+  ctx.fillRect(0,0,W,W);
 
-document.getElementById("board").innerHTML="";
-const player = new WGo.BasicPlayer(board, {sgf:data.sgf});
+  // 格子線
+  ctx.strokeStyle = '#6b5a3e';
+  ctx.lineWidth = 0.8;
+  for (let i=0;i<size;i++) {
+    const x = pad + i*cell;
+    const y = pad + i*cell;
+    ctx.beginPath(); ctx.moveTo(x, pad); ctx.lineTo(x, pad+(size-1)*cell); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(pad+(size-1)*cell, y); ctx.stroke();
+  }
 
-player.addEventListener("update", e=>{
-currentMove = e.node.moveNumber || 0;
-moveNum.innerText = currentMove;
-showComment();
-});
+  // 星（19路）
+  if (size===19) {
+    const stars = [3,9,15];
+    ctx.fillStyle = '#6b5a3e';
+    stars.forEach(sx => stars.forEach(sy => {
+      ctx.beginPath();
+      ctx.arc(pad+sx*cell, pad+sy*cell, 3, 0, Math.PI*2);
+      ctx.fill();
+    }));
+  }
+
+  // 石を描画（upTo手目まで）
+  const board = Array.from({length:size}, ()=>new Array(size).fill(null));
+  const limit = Math.min(upTo, moves.length);
+
+  for (let i=0;i<limit;i++) {
+    const mv = moves[i];
+    if (mv.x < 0 || mv.y < 0) continue; // パス
+    board[mv.y][mv.x] = mv.color;
+  }
+
+  for (let r=0;r<size;r++) {
+    for (let c=0;c<size;c++) {
+      if (!board[r][c]) continue;
+      const cx2 = pad + c*cell;
+      const cy2 = pad + r*cell;
+      const rad = cell * 0.46;
+      const isB = board[r][c]==='B';
+
+      // 石のグラデーション風
+      const grd = ctx.createRadialGradient(cx2-rad*0.25, cy2-rad*0.25, rad*0.05, cx2, cy2, rad);
+      if (isB) { grd.addColorStop(0,'#555'); grd.addColorStop(1,'#0a0a0a'); }
+      else      { grd.addColorStop(0,'#ffffff'); grd.addColorStop(1,'#d8d4cc'); }
+
+      ctx.beginPath();
+      ctx.arc(cx2, cy2, rad, 0, Math.PI*2);
+      ctx.fillStyle = grd;
+      ctx.fill();
+    }
+  }
+
+  // 最後の手にマーク
+  if (limit > 0) {
+    const last = moves[limit-1];
+    if (last.x >= 0) {
+      const cx2 = pad + last.x * cell;
+      const cy2 = pad + last.y * cell;
+      ctx.strokeStyle = last.color==='B' ? '#fff' : '#333';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(cx2, cy2, cell*0.18, 0, Math.PI*2);
+      ctx.stroke();
+    }
+  }
 }
 
-// コメント追加
-function addComment(){
-const text = commentInput.value;
-const ref = refInput.value;
+/* ========== ナビゲーション ========== */
+function updateView() {
+  // 序盤30手に制限
+  const limit = Math.min(current, 30);
+  drawBoard(limit);
+  document.getElementById('move-num').textContent = limit;
+  document.getElementById('move-counter').textContent = `${limit} / ${Math.min(moves.length,30)}手`;
 
-const idx = comments.findIndex(c=>c.move===currentMove);
+  // コメント
+  const mv = moves[current-1];
+  document.getElementById('comment-area').textContent =
+    (mv && mv.comment) ? mv.comment : '（この手のコメントはありません）';
 
-if(idx>=0){
-comments[idx]={move:currentMove,text,ref};
-}else{
-comments.push({move:currentMove,text,ref});
+  // バッジ更新
+  document.querySelectorAll('.move-badge').forEach(b => {
+    b.classList.toggle('current', parseInt(b.dataset.n) === current);
+  });
 }
 
-alert("追加");
+function goToMove(n) {
+  current = Math.max(0, Math.min(n, Math.min(moves.length, 30)));
+  updateView();
+}
+function stepMove(d) { goToMove(current + d); }
+
+/* ========== 手順バッジ ========== */
+function buildMoveBadges() {
+  const area = document.getElementById('moves-area');
+  area.innerHTML = '';
+  const limit = Math.min(moves.length, 30);
+  if (limit === 0) { area.innerHTML = '<span style="color:#999;font-size:.8rem;">手順がありません</span>'; return; }
+
+  for (let i=1;i<=limit;i++) {
+    const mv = moves[i-1];
+    const b = document.createElement('span');
+    b.className = 'move-badge';
+    b.dataset.n = i;
+    const col = mv.color==='B' ? '●' : '○';
+    b.textContent = `${i}${col}`;
+    b.onclick = () => goToMove(i);
+    area.appendChild(b);
+  }
 }
 
-// 表示
-function showComment(){
-const c = comments.find(x=>x.move===currentMove);
+/* ========== ファイル読み込み ========== */
+function loadSGFText(text, name) {
+  parseSGF(text);
+  current = 0;
+  buildMoveBadges();
+  updateView();
 
-commentBox.innerText="";
-refBoard.innerHTML="";
-
-if(c){
-commentBox.innerText=c.text;
-if(c.ref){
-new WGo.BasicPlayer(refBoard,{sgf:c.ref});
-}
-}
-}
-
-// 検索
-async function searchKifu(){
-const key = searchInput.value;
-const snap = await db.collection("kifu").get();
-list.innerHTML="";
-snap.forEach(doc=>{
-const d=doc.data();
-if(d.black.includes(key)||d.white.includes(key)){
-list.innerHTML+=`<button onclick="view('${doc.id}')">
-黒 ${d.black} - 白 ${d.white}
-</button><br>`;
-}
-});
+  // 棋譜リストに追加
+  const list = document.getElementById('kifu-list');
+  if (list.querySelector('li[style]')) list.innerHTML = '';
+  const li = document.createElement('li');
+  li.textContent = name || '無題の棋譜';
+  li.innerHTML = `<span>${name||'無題の棋譜'}</span><span class="kifu-meta">${moves.length}手</span>`;
+  li.classList.add('active');
+  list.querySelectorAll('li').forEach(x => x.classList.remove('active'));
+  li.onclick = () => { list.querySelectorAll('li').forEach(x=>x.classList.remove('active')); li.classList.add('active'); };
+  list.prepend(li);
 }
 
-// ランキング
-async function loadRanking(){
-const snap = await db.collection("kifu")
-.orderBy("views","desc").limit(10).get();
-
-list.innerHTML="ランキング<br>";
-let i=1;
-
-snap.forEach(doc=>{
-const d=doc.data();
-list.innerHTML+=`${i}位
-<button onclick="view('${doc.id}')">
-黒 ${d.black} - 白 ${d.white} (${d.views||0})
-</button><br>`;
-i++;
-});
+function loadFile(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => loadSGFText(e.target.result, file.name);
+  reader.readAsText(file, 'UTF-8');
 }
+
+function handleDrop(e) {
+  e.preventDefault();
+  document.getElementById('upload-zone').classList.remove('drag');
+  const file = e.dataTransfer.files[0];
+  if (file && file.name.endsWith('.sgf')) loadFile(file);
+  else alert('SGFファイルを選択してください');
+}
+
+// 初期描画
+drawBoard(0);
 </script>
 
 </body>
