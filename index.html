@@ -368,7 +368,7 @@
 
     <!-- 盤面 -->
     <div class="card">
-      <h2>盤面</h2>
+      <h2>盤面（序盤30手）</h2>
       <div id="board-wrap">
         <div id="board-title">手数：<span id="move-num">0</span></div>
         <canvas id="goban" width="450" height="450"></canvas>
@@ -377,14 +377,14 @@
           <button class="ctrl-btn" onclick="stepMove(-1)">◀</button>
           <span id="move-counter">0 / 0手</span>
           <button class="ctrl-btn" onclick="stepMove(1)">▶</button>
-          <button class="ctrl-btn" onclick="goToMove(Math.min)">▶|</button>
+          <button class="ctrl-btn" onclick="goToMove(Math.min(moves.length,30))">▶|</button>
         </div>
       </div>
     </div>
 
     <!-- 手順 -->
     <div class="card">
-      <h2>手順</h2>
+      <h2>手順（序盤30手）</h2>
       <div id="moves-area"><span style="color:#999;font-size:.8rem;">棋譜を読み込むと表示されます</span></div>
     </div>
 
@@ -519,6 +519,7 @@ function drawBoard(upTo) {
 
 /* ========== ナビゲーション ========== */
 function updateView() {
+ 
   // コメント
   const mv = moves[current-1];
   document.getElementById('comment-area').textContent =
