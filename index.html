@@ -794,30 +794,89 @@ function getNodeProps(nodeStr) {
   return props;
 }
 
-// SGFツリーを再帰的にパース
-// 戻り値: { nodes: [{props, children:[subtree]}] }
-function parseSGFTree(text, pos) {
-  const sequence = []; // このシーケンスのノード列
-  let i = pos;
+/* ═══════════════════════════════════════
+   SGFツリーパーサー（完全版）
+
+   SGFの構造:
+     (メインライン の最初の子 = 本譜の続き
+      メインライン の2番目以降の子 = 変化図)
+
+   各ノードに:
+     .color .x .y         手
+     .comment             C[...] の内容
+     .variations[]        変化図（2番目以降の子ツリー）
+     .next[]              本譜の次のノード列（最初の子ツリーの内容）
+
+   moves配列はメインラインをフラットに並べたもの
+═══════════════════════════════════════ */
+
+// テキスト中の pos 位置の '[' の中身を取得
+function extractBracket(text, pos) {
+  // pos は '[' の次の文字
+  let result = '', depth = 0, i = pos;
   while (i < text.length) {
     const ch = text[i];
+    if (ch === '\\') { i++; if (i < text.length) result += text[i]; }
+    else if (ch === '[') { depth++; result += ch; }
+    else if (ch === ']') {
+      if (depth === 0) return { value: result, end: i };
+      depth--; result += ch;
+    } else result += ch;
+    i++;
+  }
+  return { value: result, end: i };
+}
+
+// ノード文字列からプロパティをすべて取得
+function getNodeProps(nodeStr) {
+  const props = {};
+  const re = /([A-Z]+)\[/g;
+  let m;
+  while ((m = re.exec(nodeStr)) !== null) {
+    const key = m[1];
+    const { value } = extractBracket(nodeStr, m.index + key.length + 1);
+    if (!props[key]) props[key] = [];
+    props[key].push(value);
+  }
+  return props;
+}
+
+/*
+  parseSGFTree: pos=「(」の直後から解析し
+  { sequence: [node...], end: 「)」の位置 } を返す
+
+  各nodeは { props, firstChild: [node...], otherChildren: [[node...],...] }
+    firstChild  = 最初の子ツリー → 本譜の続き
+    otherChildren = 2番目以降 → 変化図
+*/
+function parseSGFTree(text, pos) {
+  const sequence = [];
+  let i = pos;
+
+  while (i < text.length) {
+    const ch = text[i];
+
     if (ch === ';') {
-      // ノード開始
+      // ノード読み取り
       i++;
       let nodeStr = '';
       while (i < text.length && text[i] !== ';' && text[i] !== '(' && text[i] !== ')') {
         if (text[i] === '[') {
-          nodeStr += '[';
-          i++;
-          // ブラケット内をそのままコピー
+          nodeStr += '['; i++;
           let depth = 0;
           while (i < text.length) {
             const c = text[i];
-            if (c === '\\') { nodeStr += c; i++; if (i < text.length) { nodeStr += text[i]; i++; } continue; }
+            if (c === '\\') {
+              nodeStr += c; i++;
+              if (i < text.length) { nodeStr += text[i]; i++; }
+              continue;
+            }
             if (c === '[') depth++;
             if (c === ']') {
-              if (depth === 0) { nodeStr += c; i++; break; }
+              nodeStr += c; i++;
+              if (depth === 0) break;
               depth--;
+              continue;
             }
             nodeStr += c; i++;
           }
@@ -825,23 +884,80 @@ function parseSGFTree(text, pos) {
           nodeStr += text[i]; i++;
         }
       }
-      const props = getNodeProps(nodeStr);
-      sequence.push({ props, children: [] });
+      sequence.push({
+        props: getNodeProps(nodeStr),
+        firstChild:    null,   // 本譜の続き（最初の子ツリー）
+        otherChildren: []      // 変化図（2番目以降の子ツリー）
+      });
+
     } else if (ch === '(') {
-      // 変化図（子ツリー）
+      // 子ツリー
       i++;
-      const { nodes: childNodes, end } = parseSGFTree(text, i);
-      i = end + 1; // ')' の次
+      const { sequence: childSeq, end } = parseSGFTree(text, i);
+      i = end + 1;
       if (sequence.length > 0) {
-        sequence[sequence.length - 1].children.push(childNodes);
+        const last = sequence[sequence.length - 1];
+        if (last.firstChild === null) {
+          last.firstChild = childSeq;      // 最初の子 = 本譜の続き
+        } else {
+          last.otherChildren.push(childSeq); // 2番目以降 = 変化図
+        }
       }
+
     } else if (ch === ')') {
-      return { nodes: sequence, end: i };
+      return { sequence, end: i };
+
     } else {
       i++;
     }
   }
-  return { nodes: sequence, end: i };
+  return { sequence, end: i };
+}
+
+/*
+  flattenMainLine: ツリーをメインライン（最初の子を辿る）でフラット化
+  各要素に variations（変化図）を付与
+*/
+function flattenMainLine(sequence) {
+  const result = [];
+  function walk(seq) {
+    for (const node of seq) {
+      const p = node.props;
+      const comment = (p.C && p.C[0]) ? p.C[0] : '';
+
+      // 変化図: otherChildren を参考図として収集
+      const variations = node.otherChildren.map(childSeq => {
+        const varMoves = [];
+        // 変化図のフラットな手順（変化図内の本筋のみ）
+        function collectVarMoves(seq2) {
+          for (const vn of seq2) {
+            const vp = vn.props;
+            const vc = (vp.C && vp.C[0]) ? vp.C[0] : '';
+            if (vp.B) varMoves.push({ color:'B', ...sgfXY(vp.B[0]), comment: vc });
+            else if (vp.W) varMoves.push({ color:'W', ...sgfXY(vp.W[0]), comment: vc });
+            else if (vc) varMoves.push({ color:null, x:-1, y:-1, comment: vc });
+            // 変化図内の最初の子（さらに深い本筋）も追跡
+            if (vn.firstChild) collectVarMoves(vn.firstChild);
+          }
+        }
+        collectVarMoves(childSeq);
+        const varComment = varMoves.reduce((acc, vm) => vm.comment || acc, '');
+        return { moves: varMoves, comment: varComment };
+      }).filter(v => v.moves.length > 0);
+
+      if (p.B) {
+        result.push({ color:'B', ...sgfXY(p.B[0]), comment, variations });
+      } else if (p.W) {
+        result.push({ color:'W', ...sgfXY(p.W[0]), comment, variations });
+      }
+      // ヘッダーノード（B/Wなし）はスキップして続く
+
+      // 本譜の続きへ（firstChild）
+      if (node.firstChild) walk(node.firstChild);
+    }
+  }
+  walk(sequence);
+  return result;
 }
 
 function parseSGF(text) {
@@ -850,52 +966,19 @@ function parseSGF(text) {
   playerBlack = '黒';
   playerWhite = '白';
 
-  // ルートの '(' を探す
   const rootStart = text.indexOf('(');
   if (rootStart < 0) return;
+  const { sequence } = parseSGFTree(text, rootStart + 1);
 
-  const { nodes } = parseSGFTree(text, rootStart + 1);
-
-  // ヘッダーノード（最初のノード）から情報取得
-  if (nodes.length > 0) {
-    const hp = nodes[0].props;
+  // ヘッダー情報取得
+  if (sequence.length > 0) {
+    const hp = sequence[0].props;
     if (hp.SZ) boardSize = parseInt(hp.SZ[0]) || 19;
     if (hp.PB && hp.PB[0].trim()) playerBlack = hp.PB[0].trim();
     if (hp.PW && hp.PW[0].trim()) playerWhite = hp.PW[0].trim();
   }
 
-  // ノード列をメインラインとして moves に変換
-  for (const node of nodes) {
-    const p = node.props;
-    const comment = (p.C && p.C[0]) ? p.C[0] : '';
-
-    // 変化図: このノードの children を参考図として収集
-    const variations = node.children.map(childNodes => {
-      const varMoves = [];
-      for (const vn of childNodes) {
-        const vp = vn.props;
-        const vc = (vp.C && vp.C[0]) ? vp.C[0] : '';
-        if (vp.B) {
-          varMoves.push({ color:'B', ...sgfXY(vp.B[0]), comment: vc });
-        } else if (vp.W) {
-          varMoves.push({ color:'W', ...sgfXY(vp.W[0]), comment: vc });
-        } else if (vc) {
-          // 手なし・コメントのみのノード
-          varMoves.push({ color:null, x:-1, y:-1, comment: vc });
-        }
-      }
-      // 変化図全体のコメント = 最後のコメントノード or 最初のコメント
-      const varComment = varMoves.reduce((acc, vm) => vm.comment || acc, '');
-      return { moves: varMoves, comment: varComment };
-    }).filter(v => v.moves.length > 0);
-
-    if (p.B) {
-      moves.push({ color:'B', ...sgfXY(p.B[0]), comment, variations });
-    } else if (p.W) {
-      moves.push({ color:'W', ...sgfXY(p.W[0]), comment, variations });
-    }
-    // ヘッダーノード（B/Wなし）はスキップ
-  }
+  moves = flattenMainLine(sequence);
 }
 
 
