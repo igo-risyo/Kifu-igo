@@ -82,10 +82,22 @@ canvas#goban{border:3px solid var(--grid);border-radius:2px;box-shadow:4px 4px 1
 .stone-dot{width:12px;height:12px;border-radius:50%;display:inline-block;flex-shrink:0;}
 .stone-dot.b{background:#1c1c1c;}
 .stone-dot.w{background:#f0ede6;border:1px solid #999;}
-.ref-boards{display:flex;flex-wrap:wrap;gap:.65rem;margin-bottom:.5rem;}
-.ref-board-wrap{display:flex;flex-direction:column;align-items:center;gap:3px;}
-.ref-board-wrap span{font-size:.68rem;color:#7a6040;}
+.ref-boards{display:flex;flex-direction:column;gap:1rem;margin-bottom:.5rem;}
+/* 変化図プレイヤー */
+.var-player{background:var(--paper2);border:1px solid var(--border);border-radius:7px;padding:.75rem;display:flex;flex-direction:column;gap:.55rem;}
+.var-player-header{font-size:.76rem;font-weight:600;color:var(--accent);border-bottom:1px solid var(--border);padding-bottom:.35rem;}
+.var-comment{font-size:.75rem;color:#5a4030;line-height:1.75;padding:.35rem .5rem;background:#fdf7ec;border-radius:4px;border-left:3px solid var(--accent2);}
+.var-body{display:flex;gap:.75rem;align-items:flex-start;flex-wrap:wrap;}
 canvas.ref-goban{border:2px solid var(--grid);border-radius:2px;box-shadow:2px 2px 5px var(--shadow);background:#dcb468;}
+.var-side{display:flex;flex-direction:column;gap:.4rem;flex:1;min-width:140px;}
+.var-controls{display:flex;align-items:center;gap:4px;flex-wrap:wrap;}
+.var-btn{background:var(--ink);color:var(--paper);border:none;border-radius:3px;padding:3px 8px;font-size:.68rem;cursor:pointer;font-family:inherit;transition:.15s;}
+.var-btn:hover{background:#3a2e18;}
+.var-counter{font-size:.7rem;color:var(--accent);font-weight:500;min-width:50px;text-align:center;}
+.var-moves{display:flex;flex-wrap:wrap;gap:2px;max-height:70px;overflow-y:auto;}
+.var-mv-badge{background:var(--paper3);border:1px solid var(--border);border-radius:2px;padding:1px 5px;font-size:.65rem;cursor:pointer;transition:.1s;white-space:nowrap;}
+.var-mv-badge:hover{background:#e0d4be;}
+.var-mv-badge.cur{background:var(--accent);color:#fff;border-color:var(--accent);}
 #comment-text{font-size:.8rem;color:#3a2e18;line-height:2;white-space:pre-wrap;min-height:30px;}
 
 #moves-area{display:flex;flex-wrap:wrap;gap:3px;max-height:84px;overflow-y:auto;}
@@ -147,7 +159,7 @@ import { getFirestore, doc, setDoc, getDoc, collection, getDocs, addDoc,
 
 // ▼▼▼ Firebaseプロジェクトの設定値に変更してください ▼▼▼
 const firebaseConfig = {
- apiKey: "AIzaSyDMWj2D93inW4a5yziKyBx9twcQsQzKdl0",
+  apiKey: "AIzaSyDMWj2D93inW4a5yziKyBx9twcQsQzKdl0",
   authDomain: "kufu-igo.firebaseapp.com",
   projectId: "kufu-igo",
   storageBucket: "kufu-igo.firebasestorage.app",
@@ -626,98 +638,254 @@ function renderCommentary() {
   }
 }
 
-/* ★ 解説テキストと変化図（参考図）を手番に合わせて更新 */
+/* ★ 解説テキストと変化図を手番に合わせて更新 */
+
+// 変化図ごとの再生位置を管理（キー: 変化図インデックス）
+let varCurStep = {};
+
 function updateCommentary() {
   if (!currentKifu || (!currentKifu.hasPurchased && currentKifu.isPremium)) return;
 
   const ct = document.getElementById('comment-text');
   const rb = document.getElementById('ref-boards');
-  if (!ct) return;
+  if (!ct || !rb) return;
 
   const mv = (cur > 0) ? moves[cur - 1] : null;
 
-  // コメントテキスト表示
+  // コメントテキスト（「この手のコメントはありません」は有料記事では非表示）
   const comment = mv?.comment || '';
-  ct.textContent = comment || '（この手のコメントはありません）';
+  if (comment) {
+    ct.style.display = '';
+    ct.textContent = comment;
+  } else {
+    // 有料記事 or 変化図あり → 非表示。無料記事は薄く表示
+    if (currentKifu.isPremium) {
+      ct.style.display = 'none';
+    } else {
+      ct.style.display = '';
+      ct.textContent = '（この手のコメントはありません）';
+    }
+  }
 
-  if (!rb) return;
   rb.innerHTML = '';
+  varCurStep = {};
 
-  // 変化図（SGFの括弧分岐）を参考図として表示
   const variations = mv?.variations || [];
   if (!variations.length) return;
 
   variations.forEach((variation, vi) => {
-    // 変化図ラベル（変化図のコメントを使用）
-    const varComment = variation.comment || `変化図 ${vi + 1}`;
+    varCurStep[vi] = 0; // 初期位置は0（変化図前＝現在の本手順盤面）
 
-    // 変化図のコメントを表示
+    // 変化図プレイヤーのDOM構築
+    const player = document.createElement('div');
+    player.className = 'var-player';
+    player.id = `var-player-${vi}`;
+
+    // ヘッダー
+    const header = document.createElement('div');
+    header.className = 'var-player-header';
+    header.textContent = `変化図 ${vi + 1}（${variation.moves.length}手）`;
+    player.appendChild(header);
+
+    // コメント
     if (variation.comment) {
       const commentEl = document.createElement('div');
-      commentEl.style.cssText = 'font-size:.76rem;color:#5a4030;margin-bottom:.4rem;padding:.4rem .6rem;background:#fdf7ec;border-radius:4px;border-left:3px solid var(--accent2);';
-      commentEl.textContent = `変化図${vi + 1}：${variation.comment}`;
-      rb.appendChild(commentEl);
+      commentEl.className = 'var-comment';
+      commentEl.textContent = variation.comment;
+      player.appendChild(commentEl);
     }
 
-    // 変化図の盤面を描画（現在局面 + 変化図の手順）
-    const wrap = document.createElement('div');
-    wrap.className = 'ref-board-wrap';
+    // body（盤面 + コントロール）
+    const body = document.createElement('div');
+    body.className = 'var-body';
 
-    const lbl = document.createElement('span');
-    lbl.textContent = `変化図 ${vi + 1}（${variation.moves.length}手）`;
-
+    // キャンバス
     const c = document.createElement('canvas');
     c.className = 'ref-goban';
-    // 盤面サイズに応じてキャンバスサイズを調整
+    c.id = `var-canvas-${vi}`;
     const canvasSize = boardSize >= 19 ? 260 : boardSize >= 13 ? 200 : 150;
     c.width = c.height = canvasSize;
+    body.appendChild(c);
 
-    // 現在局面（メインラインのcurまで）の盤面を取得して変化図を描画
-    drawVariationBoard(c, variation.moves, cur);
+    // サイドパネル（コントロール + 手順バッジ）
+    const side = document.createElement('div');
+    side.className = 'var-side';
 
-    wrap.appendChild(c);
-    wrap.appendChild(lbl);
-    rb.appendChild(wrap);
+    // コントロールバー
+    const ctrl = document.createElement('div');
+    ctrl.className = 'var-controls';
+    ctrl.innerHTML = `
+      <button class="var-btn" onclick="varGoTo(${vi},0)">|◀</button>
+      <button class="var-btn" onclick="varStep(${vi},-1)">◀</button>
+      <span class="var-counter" id="var-counter-${vi}">0 / ${variation.moves.length}</span>
+      <button class="var-btn" onclick="varStep(${vi},1)">▶</button>
+      <button class="var-btn" onclick="varGoTo(${vi},${variation.moves.length})">▶|</button>
+    `;
+    side.appendChild(ctrl);
+
+    // 手順バッジ
+    const badges = document.createElement('div');
+    badges.className = 'var-moves';
+    badges.id = `var-badges-${vi}`;
+    // 手0＝開始局面
+    const b0 = document.createElement('span');
+    b0.className = 'var-mv-badge cur';
+    b0.dataset.vi = vi; b0.dataset.step = 0;
+    b0.textContent = '開始';
+    b0.onclick = () => varGoTo(vi, 0);
+    badges.appendChild(b0);
+
+    variation.moves.forEach((vm, i) => {
+      const GTP = 'ABCDEFGHJKLMNOPQRST';
+      const pos = vm.x >= 0 ? `${GTP[vm.x]}${boardSize - vm.y}` : 'パス';
+      const col = vm.color === 'B' ? '●' : vm.color === 'W' ? '○' : '?';
+      const b = document.createElement('span');
+      b.className = 'var-mv-badge';
+      b.dataset.vi = vi; b.dataset.step = i + 1;
+      b.textContent = `${i+1}${col}${pos}`;
+      b.onclick = () => varGoTo(vi, i + 1);
+      badges.appendChild(b);
+    });
+    side.appendChild(badges);
+    body.appendChild(side);
+    player.appendChild(body);
+    rb.appendChild(player);
+
+    // 初期描画（step=0：変化図前の本手順盤面）
+    drawVariationBoard(vi, variation.moves, 0);
   });
 }
 
-/* 変化図盤面の描画: 現在の盤面 + 変化図の手順を番号付きで重ねる */
-function drawVariationBoard(canvas, varMoves, baseUpTo) {
-  const ctx2 = canvas.getContext('2d');
-  const sz = boardSize;
-  const { pad, cell } = drawBoardBase(canvas, ctx2, sz);
+/* 変化図の再生コントロール */
+function varGoTo(vi, step) {
+  const mv = (cur > 0) ? moves[cur - 1] : null;
+  const variation = mv?.variations?.[vi];
+  if (!variation) return;
 
-  // 現在のメインライン盤面（石取り適用済み）
-  const { board } = getBoardAt(baseUpTo);
-  for (let r=0; r<sz; r++) for (let cc=0; cc<sz; cc++) {
-    if (!board[r][cc]) continue;
-    drawStone(ctx2, pad+cc*cell, pad+r*cell, cell*.44, board[r][cc]==='B');
+  step = Math.max(0, Math.min(step, variation.moves.length));
+  varCurStep[vi] = step;
+
+  // カウンター更新
+  const counter = document.getElementById(`var-counter-${vi}`);
+  if (counter) counter.textContent = `${step} / ${variation.moves.length}`;
+
+  // バッジ更新
+  const badges = document.getElementById(`var-badges-${vi}`);
+  if (badges) {
+    badges.querySelectorAll('.var-mv-badge').forEach(b => {
+      b.classList.toggle('cur', parseInt(b.dataset.step) === step);
+    });
   }
 
-  // 変化図の手を番号付きで描画
-  // ★ SGFのB[]/W[]タグで色が明示されているのでそれを使う
-  // colorがnullの場合のみ交互計算にフォールバック
-  const nextColor = (baseUpTo > 0 && moves[baseUpTo-1])
-    ? (moves[baseUpTo-1].color === 'B' ? 'W' : 'B')
-    : 'B';
+  // 盤面再描画
+  drawVariationBoard(vi, variation.moves, step);
+}
 
-  varMoves.forEach((vm, i) => {
-    if (vm.x < 0 || vm.y < 0) return; // パス
-    // ★ SGFのB/Wタグを優先、なければ交互計算
-    let isBlack;
-    if (vm.color === 'B') isBlack = true;
-    else if (vm.color === 'W') isBlack = false;
-    else isBlack = (i % 2 === 0) ? (nextColor === 'B') : (nextColor === 'W');
+function varStep(vi, d) {
+  varGoTo(vi, (varCurStep[vi] || 0) + d);
+}
 
-    ctx2.globalAlpha = 0.88;
-    drawStone(ctx2, pad+vm.x*cell, pad+vm.y*cell, cell*.44, isBlack);
+/* 変化図の盤面描画
+   - step=0: 現在の本手順盤面のみ（変化図の石なし）
+   - step=N: 現在の本手順盤面 + 変化図N手目まで重ねる
+*/
+function drawVariationBoard(vi, varMoves, step) {
+  const c = document.getElementById(`var-canvas-${vi}`);
+  if (!c) return;
+  const ctx2 = c.getContext('2d');
+  const sz = boardSize;
+  const { pad, cell } = drawBoardBase(c, ctx2, sz);
+
+  // 現在の本手順盤面（石取り適用済み）
+  const { board } = getBoardAt(cur);
+  for (let r = 0; r < sz; r++) for (let cc = 0; cc < sz; cc++) {
+    if (!board[r][cc]) continue;
+    drawStone(ctx2, pad + cc * cell, pad + r * cell, cell * .44, board[r][cc] === 'B');
+  }
+
+  if (step === 0) return; // step=0 は本手順盤面のみ
+
+  // 変化図の手を step 手目まで描画
+  // ★ 石取りも適用する（変化図内の石取りシミュレーション）
+  const varBoard = board.map(row => [...row]); // コピー
+  const inBounds = (x, y) => x >= 0 && y >= 0 && x < sz && y < sz;
+  const nbrs = (x, y) => [[x-1,y],[x+1,y],[x,y-1],[x,y+1]].filter(([a,b]) => inBounds(a,b));
+
+  function getGroup(bd, x, y) {
+    const color = bd[y][x]; if (!color) return null;
+    const stones = [], liberties = new Set(), visited = new Set();
+    const stack = [[x, y]];
+    while (stack.length) {
+      const [cx, cy] = stack.pop();
+      const key = `${cx},${cy}`;
+      if (visited.has(key)) continue;
+      visited.add(key); stones.push([cx, cy]);
+      for (const [nx, ny] of nbrs(cx, cy)) {
+        if (!bd[ny][nx]) liberties.add(`${nx},${ny}`);
+        else if (bd[ny][nx] === color) stack.push([nx, ny]);
+      }
+    }
+    return { stones, liberties };
+  }
+  function removeDead(bd, color) {
+    const checked = new Set();
+    for (let y = 0; y < sz; y++) for (let x = 0; x < sz; x++) {
+      if (bd[y][x] !== color) continue;
+      const key = `${x},${y}`;
+      if (checked.has(key)) continue;
+      const grp = getGroup(bd, x, y);
+      grp.stones.forEach(([a, b]) => checked.add(`${a},${b}`));
+      if (grp.liberties.size === 0) grp.stones.forEach(([a, b]) => { bd[b][a] = null; });
+    }
+  }
+
+  // step手目まで変化図を再生
+  const drawnPositions = []; // 描画済みの手（番号付き）
+  for (let i = 0; i < step && i < varMoves.length; i++) {
+    const vm = varMoves[i];
+    if (vm.x < 0 || vm.y < 0) continue; // パス
+
+    // 石取りシミュレーション
+    varBoard[vm.y][vm.x] = vm.color || (i % 2 === 0 ? 'B' : 'W');
+    const opp = varBoard[vm.y][vm.x] === 'B' ? 'W' : 'B';
+    removeDead(varBoard, opp);
+    removeDead(varBoard, varBoard[vm.y][vm.x]);
+    drawnPositions.push({ x: vm.x, y: vm.y, n: i + 1, color: vm.color });
+  }
+
+  // 変化図の石を描画（本手順と区別するため半透明ベース）
+  // まず変化図で加わった全石を描画
+  for (let r = 0; r < sz; r++) for (let cc = 0; cc < sz; cc++) {
+    if (varBoard[r][cc] === board[r][cc]) continue; // 本手順と同じ石はスキップ
+    if (!varBoard[r][cc]) continue;
+    ctx2.globalAlpha = 0.82;
+    drawStone(ctx2, pad + cc * cell, pad + r * cell, cell * .44, varBoard[r][cc] === 'B');
     ctx2.globalAlpha = 1;
+  }
+
+  // 手番号を書く
+  drawnPositions.forEach(({ x, y, n, color }) => {
+    if (!varBoard[y][x]) return; // 取られた石は番号なし
+    const isBlack = color === 'B';
     ctx2.fillStyle = isBlack ? '#fff' : '#333';
-    ctx2.font = `bold ${Math.max(7, Math.floor(cell*.34))}px sans-serif`;
+    ctx2.font = `bold ${Math.max(7, Math.floor(cell * .34))}px sans-serif`;
     ctx2.textAlign = 'center';
     ctx2.textBaseline = 'middle';
-    ctx2.fillText(String(i + 1), pad+vm.x*cell, pad+vm.y*cell);
+    ctx2.fillText(String(n), pad + x * cell, pad + y * cell);
   });
+
+  // 最後の手マーク
+  if (step > 0 && drawnPositions.length > 0) {
+    const last = drawnPositions[drawnPositions.length - 1];
+    if (varBoard[last.y]?.[last.x]) {
+      const isBlack = last.color === 'B';
+      ctx2.strokeStyle = isBlack ? 'rgba(255,255,255,.8)' : 'rgba(0,0,0,.6)';
+      ctx2.lineWidth = 1.5;
+      ctx2.beginPath();
+      ctx2.arc(pad + last.x * cell, pad + last.y * cell, cell * .17, 0, Math.PI * 2);
+      ctx2.stroke();
+    }
+  }
 }
 
 /* ═══════════════════════════════════════
