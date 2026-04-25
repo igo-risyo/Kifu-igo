@@ -147,7 +147,7 @@ import { getFirestore, doc, setDoc, getDoc, collection, getDocs, addDoc,
 
 // ▼▼▼ Firebaseプロジェクトの設定値に変更してください ▼▼▼
 const firebaseConfig = {
-  apiKey: "AIzaSyDMWj2D93inW4a5yziKyBx9twcQsQzKdl0",
+ apiKey: "AIzaSyDMWj2D93inW4a5yziKyBx9twcQsQzKdl0",
   authDomain: "kufu-igo.firebaseapp.com",
   projectId: "kufu-igo",
   storageBucket: "kufu-igo.firebasestorage.app",
@@ -258,7 +258,7 @@ onAuthStateChanged(auth, async user => {
       <div id="viewer-grid">
         <div id="board-wrap">
           <div style="font-size:.73rem;color:var(--accent);font-weight:500;">手数：<span id="move-num">0</span></div>
-          <canvas id="goban" width="370" height="370"></canvas>
+          <canvas id="goban" width="480" height="480"></canvas>
           <div id="controls">
             <button class="ctrl-btn" onclick="goTo(0)">|◀</button>
             <button class="ctrl-btn" onclick="step(-10)">«</button>
@@ -273,11 +273,11 @@ onAuthStateChanged(auth, async user => {
           <!-- 対局者名 + アゲハマ -->
           <div id="players-bar">
             <div class="player-row">
-              <div class="player-name"><span class="st-b"></span><span id="name-black">黒</span></div>
+              <div class="player-name"><span class="st-b"></span><span id="name-black">黒</span><span id="rank-black" style="font-size:.72rem;color:#8a7050;margin-left:3px;"></span></div>
               <div class="agehama-info">アゲハマ <span class="agehama-num" id="ah-black">0</span> 個</div>
             </div>
             <div class="player-row">
-              <div class="player-name"><span class="st-w"></span><span id="name-white">白</span></div>
+              <div class="player-name"><span class="st-w"></span><span id="name-white">白</span><span id="rank-white" style="font-size:.72rem;color:#8a7050;margin-left:3px;"></span></div>
               <div class="agehama-info">アゲハマ <span class="agehama-num" id="ah-white">0</span> 個</div>
             </div>
           </div>
@@ -348,6 +348,8 @@ let cur         = 0;
 let boardSize   = 19;
 let playerBlack = '黒';
 let playerWhite = '白';
+let rankBlack = '';
+let rankWhite = '';
 let currentKifu = null;
 let kifuStore   = [];
 
@@ -667,7 +669,7 @@ function updateCommentary() {
     const c = document.createElement('canvas');
     c.className = 'ref-goban';
     // 盤面サイズに応じてキャンバスサイズを調整
-    const canvasSize = boardSize >= 19 ? 200 : boardSize >= 13 ? 160 : 120;
+    const canvasSize = boardSize >= 19 ? 260 : boardSize >= 13 ? 200 : 150;
     c.width = c.height = canvasSize;
 
     // 現在局面（メインラインのcurまで）の盤面を取得して変化図を描画
@@ -693,14 +695,20 @@ function drawVariationBoard(canvas, varMoves, baseUpTo) {
   }
 
   // 変化図の手を番号付きで描画
+  // ★ SGFのB[]/W[]タグで色が明示されているのでそれを使う
+  // colorがnullの場合のみ交互計算にフォールバック
   const nextColor = (baseUpTo > 0 && moves[baseUpTo-1])
     ? (moves[baseUpTo-1].color === 'B' ? 'W' : 'B')
     : 'B';
 
   varMoves.forEach((vm, i) => {
     if (vm.x < 0 || vm.y < 0) return; // パス
-    // 変化図は交互に黒白（nextColorから始まる）
-    const isBlack = (i % 2 === 0) ? (nextColor === 'B') : (nextColor === 'W');
+    // ★ SGFのB/Wタグを優先、なければ交互計算
+    let isBlack;
+    if (vm.color === 'B') isBlack = true;
+    else if (vm.color === 'W') isBlack = false;
+    else isBlack = (i % 2 === 0) ? (nextColor === 'B') : (nextColor === 'W');
+
     ctx2.globalAlpha = 0.88;
     drawStone(ctx2, pad+vm.x*cell, pad+vm.y*cell, cell*.44, isBlack);
     ctx2.globalAlpha = 1;
@@ -965,6 +973,8 @@ function parseSGF(text) {
   boardSize   = 19;
   playerBlack = '黒';
   playerWhite = '白';
+  rankBlack = '';
+  rankWhite = '';
 
   const rootStart = text.indexOf('(');
   if (rootStart < 0) return;
@@ -976,6 +986,8 @@ function parseSGF(text) {
     if (hp.SZ) boardSize = parseInt(hp.SZ[0]) || 19;
     if (hp.PB && hp.PB[0].trim()) playerBlack = hp.PB[0].trim();
     if (hp.PW && hp.PW[0].trim()) playerWhite = hp.PW[0].trim();
+    if (hp.BR && hp.BR[0].trim()) rankBlack = hp.BR[0].trim();
+    if (hp.WR && hp.WR[0].trim()) rankWhite = hp.WR[0].trim();
   }
 
   moves = flattenMainLine(sequence);
@@ -1163,6 +1175,8 @@ function updateView() {
     bar.style.display = 'flex';
     document.getElementById('name-black').textContent = playerBlack;
     document.getElementById('name-white').textContent = playerWhite;
+    document.getElementById('rank-black').textContent = rankBlack;
+    document.getElementById('rank-white').textContent = rankWhite;
     const { agehamaB, agehamaW } = getBoardAt(cur);
     document.getElementById('ah-black').textContent = agehamaB;
     document.getElementById('ah-white').textContent = agehamaW;
