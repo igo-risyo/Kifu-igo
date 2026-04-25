@@ -180,7 +180,7 @@ import { getFirestore, doc, setDoc, getDoc, collection, getDocs, addDoc,
 
 // ▼▼▼ Firebaseプロジェクトの設定値に変更してください ▼▼▼
 const firebaseConfig = {
- apiKey: "AIzaSyDMWj2D93inW4a5yziKyBx9twcQsQzKdl0",
+  apiKey: "AIzaSyDMWj2D93inW4a5yziKyBx9twcQsQzKdl0",
   authDomain: "kufu-igo.firebaseapp.com",
   projectId: "kufu-igo",
   storageBucket: "kufu-igo.firebasestorage.app",
@@ -711,7 +711,7 @@ function updateCommentary() {
   if (!variations.length) return;
 
   variations.forEach((variation, vi) => {
-    varCurStep[vi] = 0; // 初期位置は0（変化図前＝現在の本手順盤面）
+    varCurStep[vi] = variation.moves.length; // 初期位置は最終形
 
     // 変化図プレイヤーのDOM構築
     const player = document.createElement('div');
@@ -754,7 +754,7 @@ function updateCommentary() {
     ctrl.innerHTML = `
       <button class="var-btn" onclick="varGoTo(${vi},0)">|◀</button>
       <button class="var-btn" onclick="varStep(${vi},-1)">◀</button>
-      <span class="var-counter" id="var-counter-${vi}">0 / ${variation.moves.length}</span>
+      <span class="var-counter" id="var-counter-${vi}">${variation.moves.length} / ${variation.moves.length}</span>
       <button class="var-btn" onclick="varStep(${vi},1)">▶</button>
       <button class="var-btn" onclick="varGoTo(${vi},${variation.moves.length})">▶|</button>
     `;
@@ -766,7 +766,7 @@ function updateCommentary() {
     badges.id = `var-badges-${vi}`;
     // 手0＝開始局面
     const b0 = document.createElement('span');
-    b0.className = 'var-mv-badge cur';
+    b0.className = 'var-mv-badge';
     b0.dataset.vi = vi; b0.dataset.step = 0;
     b0.textContent = '開始';
     b0.onclick = () => varGoTo(vi, 0);
@@ -788,8 +788,17 @@ function updateCommentary() {
     player.appendChild(body);
     rb.appendChild(player);
 
-    // 初期描画（step=0：変化図前の本手順盤面）
-    drawVariationBoard(vi, variation.moves, 0);
+    // 初期描画：最終形（全手数）を表示
+    // バッジのcurrentも最終形に合わせる
+    setTimeout(() => {
+      const initBadges = document.getElementById(`var-badges-${vi}`);
+      if (initBadges) {
+        initBadges.querySelectorAll('.var-mv-badge').forEach(b => {
+          b.classList.toggle('cur', parseInt(b.dataset.step) === variation.moves.length);
+        });
+      }
+    }, 0);
+    drawVariationBoard(vi, variation.moves, variation.moves.length);
   });
 }
 
@@ -822,107 +831,97 @@ function varStep(vi, d) {
   varGoTo(vi, (varCurStep[vi] || 0) + d);
 }
 
-/* 変化図の盤面描画
-   分岐点 = cur手目の手が打たれた手番のノード
-   変化図の開始盤面 = getBoardAt(cur - 1)（cur手目の手を打つ前の盤面）
-   ※ cur-1の盤面に変化図の手順を重ねる
+/* ─────────────────────────────────────
+   変化図の石取りエンジン（ヘルパー）
+───────────────────────────────────── */
+function _varGetGroup(bd, x, y, sz) {
+  const color = bd[y][x]; if (!color) return null;
+  const stones = [], liberties = new Set(), visited = new Set();
+  const stack = [[x, y]];
+  while (stack.length) {
+    const [cx, cy] = stack.pop();
+    const key = `${cx},${cy}`;
+    if (visited.has(key)) continue;
+    visited.add(key); stones.push([cx, cy]);
+    for (const [nx, ny] of [[cx-1,cy],[cx+1,cy],[cx,cy-1],[cx,cy+1]]) {
+      if (nx<0||ny<0||nx>=sz||ny>=sz) continue;
+      if (!bd[ny][nx]) liberties.add(`${nx},${ny}`);
+      else if (bd[ny][nx] === color) stack.push([nx, ny]);
+    }
+  }
+  return { stones, liberties };
+}
+function _varRemoveDead(bd, color, sz) {
+  const checked = new Set();
+  for (let y=0;y<sz;y++) for (let x=0;x<sz;x++) {
+    if (bd[y][x] !== color) continue;
+    const key = `${x},${y}`; if (checked.has(key)) continue;
+    const g = _varGetGroup(bd, x, y, sz);
+    g.stones.forEach(([a,b]) => checked.add(`${a},${b}`));
+    if (g.liberties.size === 0) g.stones.forEach(([a,b]) => { bd[b][a] = null; });
+  }
+}
+
+/*
+  buildVarBoard(varMoves, step):
+    ベース盤面（cur-1手目まで）に変化図をstep手まで適用した盤面と
+    各手の情報を返す
+
+  返り値: { board, steps: [{x,y,n,color,alive}] }
+*/
+function buildVarBoard(varMoves, step) {
+  const sz = boardSize;
+  // ベース盤面: 変化図の分岐点の直前（cur-1手目まで）
+  const baseUpTo = Math.max(0, cur - 1);
+  const { board: baseBoard } = getBoardAt(baseUpTo);
+  const bd = baseBoard.map(row => [...row]);
+
+  const steps = [];
+  const limit = Math.min(step, varMoves.length);
+
+  for (let i = 0; i < limit; i++) {
+    const vm = varMoves[i];
+    if (vm.x < 0 || vm.y < 0) continue; // パス
+    const color = vm.color || (i % 2 === 0 ? 'B' : 'W');
+    if (bd[vm.y][vm.x]) continue; // 既に石がある（異常系）
+    bd[vm.y][vm.x] = color;
+    const opp = color === 'B' ? 'W' : 'B';
+    _varRemoveDead(bd, opp, sz);
+    _varRemoveDead(bd, color, sz);
+    steps.push({ x: vm.x, y: vm.y, n: i + 1, color, alive: !!bd[vm.y][vm.x] });
+  }
+
+  return { board: bd, baseBoard, steps };
+}
+
+/*
+  drawVariationBoard(vi, varMoves, step):
+    毎回キャンバスを全体再描画（差分描画はしない）
+    step=最大値のとき → 最終形を表示
 */
 function drawVariationBoard(vi, varMoves, step) {
   const c = document.getElementById(`var-canvas-${vi}`);
   if (!c) return;
   const ctx2 = c.getContext('2d');
   const sz = boardSize;
+
+  // 変化図の盤面を計算
+  const { board, steps } = buildVarBoard(varMoves, step);
+
+  // ① 盤面ベース（格子・星）を再描画
   const { pad, cell } = drawBoardBase(c, ctx2, sz);
 
-  // ★ 変化図の開始盤面 = cur-1手目まで（分岐点の直前）
-  // cur=0のときは空盤面
-  const baseUpTo = Math.max(0, cur - 1);
-  const { board: baseBoard } = getBoardAt(baseUpTo);
-
-  // ベース盤面を描画
+  // ② 全石を描画（ベース盤面 + 変化図の石取り結果）
   for (let r = 0; r < sz; r++) for (let cc = 0; cc < sz; cc++) {
-    if (!baseBoard[r][cc]) continue;
-    drawStone(ctx2, pad + cc * cell, pad + r * cell, cell * .44, baseBoard[r][cc] === 'B');
+    if (!board[r][cc]) continue;
+    drawStone(ctx2, pad + cc * cell, pad + r * cell, cell * .44, board[r][cc] === 'B');
   }
 
-  if (step === 0) return; // step=0 はベース盤面のみ
+  if (step === 0) return;
 
-  // ── 変化図の石取りシミュレーション ──
-  const inBounds = (x, y) => x >= 0 && y >= 0 && x < sz && y < sz;
-  const nbrs = (x, y) => [[x-1,y],[x+1,y],[x,y-1],[x,y+1]].filter(([a,b]) => inBounds(a,b));
-
-  function getGroup(bd, x, y) {
-    const color = bd[y][x]; if (!color) return null;
-    const stones = [], liberties = new Set(), visited = new Set();
-    const stack = [[x, y]];
-    while (stack.length) {
-      const [cx, cy] = stack.pop();
-      const key = `${cx},${cy}`;
-      if (visited.has(key)) continue;
-      visited.add(key); stones.push([cx, cy]);
-      for (const [nx, ny] of nbrs(cx, cy)) {
-        if (!bd[ny][nx]) liberties.add(`${nx},${ny}`);
-        else if (bd[ny][nx] === color) stack.push([nx, ny]);
-      }
-    }
-    return { stones, liberties };
-  }
-  function removeDead(bd, color) {
-    const checked = new Set();
-    for (let y = 0; y < sz; y++) for (let x = 0; x < sz; x++) {
-      if (bd[y][x] !== color) continue;
-      const key = `${x},${y}`;
-      if (checked.has(key)) continue;
-      const grp = getGroup(bd, x, y);
-      grp.stones.forEach(([a, b]) => checked.add(`${a},${b}`));
-      if (grp.liberties.size === 0) grp.stones.forEach(([a, b]) => { bd[b][a] = null; });
-    }
-  }
-
-  // ベース盤面をコピーして変化図を適用
-  const varBoard = baseBoard.map(row => [...row]);
-  const drawnSteps = []; // 手番号描画用
-
-  for (let i = 0; i < step && i < varMoves.length; i++) {
-    const vm = varMoves[i];
-    if (vm.x < 0 || vm.y < 0) continue; // パス
-
-    const color = vm.color || (i % 2 === 0 ? 'B' : 'W');
-    // 既に石がある場所には打てない（安全チェック）
-    if (varBoard[vm.y][vm.x]) continue;
-
-    varBoard[vm.y][vm.x] = color;
-    const opp = color === 'B' ? 'W' : 'B';
-    removeDead(varBoard, opp);
-    removeDead(varBoard, color);
-    drawnSteps.push({ x: vm.x, y: vm.y, n: i + 1, color });
-  }
-
-  // ── 変化図の石を描画 ──
-  // ベース盤面と変化図後の盤面の差分を描画
-  for (let r = 0; r < sz; r++) for (let cc = 0; cc < sz; cc++) {
-    if (varBoard[r][cc] === baseBoard[r][cc]) continue; // 変化なし
-    if (varBoard[r][cc]) {
-      // 変化図で新たに置かれた石
-      drawStone(ctx2, pad + cc * cell, pad + r * cell, cell * .44, varBoard[r][cc] === 'B');
-    } else {
-      // 取られた石（ベースにあったが変化図でなくなった）
-      // → すでに描画済みの石を消す必要がある
-      // キャンバスの該当部分を盤面色で塗りつぶす
-      const cx2 = pad + cc * cell, cy2 = pad + r * cell;
-      const r2 = cell * .5;
-      ctx2.fillStyle = '#dcb468';
-      ctx2.beginPath(); ctx2.arc(cx2, cy2, r2, 0, Math.PI * 2); ctx2.fill();
-      // 格子線を再描画
-      ctx2.strokeStyle = '#6b5a3e'; ctx2.lineWidth = .75;
-      ctx2.beginPath(); ctx2.moveTo(cx2 - r2, cy2); ctx2.lineTo(cx2 + r2, cy2); ctx2.stroke();
-      ctx2.beginPath(); ctx2.moveTo(cx2, cy2 - r2); ctx2.lineTo(cx2, cy2 + r2); ctx2.stroke();
-    }
-  }
-
-  // 手番号を書く（生き残っている石のみ）
-  drawnSteps.forEach(({ x, y, n, color }) => {
-    if (!varBoard[y][x]) return; // 取られた石は番号なし
+  // ③ 変化図の手に番号を表示（石が生きている手のみ）
+  steps.forEach(({ x, y, n, color, alive }) => {
+    if (!alive) return;
     const isBlack = color === 'B';
     ctx2.fillStyle = isBlack ? '#fff' : '#333';
     ctx2.font = `bold ${Math.max(7, Math.floor(cell * .36))}px sans-serif`;
@@ -931,16 +930,16 @@ function drawVariationBoard(vi, varMoves, step) {
     ctx2.fillText(String(n), pad + x * cell, pad + y * cell);
   });
 
-  // 最後の手マーク
-  if (drawnSteps.length > 0) {
-    const last = drawnSteps[drawnSteps.length - 1];
-    if (varBoard[last.y]?.[last.x]) {
-      ctx2.strokeStyle = last.color === 'B' ? 'rgba(255,255,255,.85)' : 'rgba(0,0,0,.65)';
-      ctx2.lineWidth = 1.5;
-      ctx2.beginPath();
-      ctx2.arc(pad + last.x * cell, pad + last.y * cell, cell * .17, 0, Math.PI * 2);
-      ctx2.stroke();
-    }
+  // ④ 最後の手にマーク
+  // 最後に打たれた石（生きている）を探す
+  const lastAlive = [...steps].reverse().find(s => s.alive);
+  if (lastAlive) {
+    const isBlack = lastAlive.color === 'B';
+    ctx2.strokeStyle = isBlack ? 'rgba(255,255,255,.85)' : 'rgba(0,0,0,.65)';
+    ctx2.lineWidth = 1.5;
+    ctx2.beginPath();
+    ctx2.arc(pad + lastAlive.x * cell, pad + lastAlive.y * cell, cell * .17, 0, Math.PI * 2);
+    ctx2.stroke();
   }
 }
 
