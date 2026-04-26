@@ -98,6 +98,14 @@ async function checkAdmin(user) {
     return all.docs.some(d => d.data().email === user.email);
   } catch { return false; }
 }
+async function checkSubAdmin(user) {
+  try {
+    const s = await getDoc(doc(db,'sub_admins',user.uid));
+    if (s.exists()) return true;
+    const all = await getDocs(collection(db,'sub_admins'));
+    return all.docs.some(d => d.data().email === user.email);
+  } catch { return false; }
+}
 
 window.FB = { db, auth, doc, setDoc, deleteDoc, getDoc, collection,
               getDocs, updateDoc, query, orderBy, serverTimestamp };
@@ -108,17 +116,21 @@ onAuthStateChanged(auth, async user => {
   const adm  = document.getElementById('admin-app');
   if (!user) { gate.style.display='flex'; adm.style.display='none'; return; }
 
-  const isAdmin = await checkAdmin(user);
-  if (!isAdmin) {
+  const [isAdmin, isSubAdmin] = await Promise.all([checkAdmin(user), checkSubAdmin(user)]);
+  if (!isAdmin && !isSubAdmin) {
     gate.style.display='flex';
     gate.innerHTML=`<div class="login-box"><h2>アクセス権限なし</h2>
-      <p>${user.email}<br>このアカウントには管理者権限がありません。</p>
+      <p>${user.email}<br>このアカウントには権限がありません。</p>
       <a href="index.html" class="btn btn-s">← サイトに戻る</a></div>`;
     return;
   }
-  window.CU = user;
-  document.getElementById('h-user').textContent = user.displayName || user.email;
+  window.CU = user; window.IS_ADMIN = isAdmin; window.IS_SUB = isSubAdmin;
+  document.getElementById('h-user').textContent =
+    (user.displayName || user.email) + (isAdmin ? ' [管理者]' : ' [投稿者]');
   gate.style.display='none'; adm.style.display='block';
+  if (!isAdmin) {
+    document.querySelectorAll('.admin-only').forEach(el => el.style.display='none');
+  }
   loadAll();
 });
 </script>
@@ -145,7 +157,7 @@ onAuthStateChanged(auth, async user => {
   <div id="admin-app" style="display:none;">
 
     <!-- 統計 -->
-    <div class="card">
+    <div class="card admin-only">
       <h2>📊 統計</h2>
       <div class="stats">
         <div class="stat"><div class="stat-val" id="st-admins">-</div><div class="stat-lbl">管理者数</div></div>
@@ -157,7 +169,7 @@ onAuthStateChanged(auth, async user => {
     </div>
 
     <!-- 権限管理 -->
-    <div class="card">
+    <div class="card admin-only">
       <h2>👑 アップロード権限管理
         <button class="btn btn-p" onclick="toggleAddForm()">＋ 追加</button>
       </h2>
@@ -182,9 +194,32 @@ onAuthStateChanged(auth, async user => {
       </table>
     </div>
 
-    <!-- 棋譜管理 -->
+    <!-- サブ管理者管理 -->
+    <div class="card admin-only">
+      <h2>🌿 投稿者（サブ管理者）管理
+        <button class="btn btn-p btn-sm" onclick="toggleSubAdminForm()">＋ 追加</button>
+      </h2>
+      <div class="add-form" id="add-sub-form">
+        <div style="font-size:.76rem;font-weight:500;margin-bottom:.6rem;color:#5a4030;">棋譜・講座の投稿のみ可能（売上・権限管理は不可）</div>
+        <div class="row">
+          <div class="field"><label>Firebase UID（必須）</label><input type="text" id="sub-uid" placeholder="xxxxxxxxxxxxxxxxxxxxxxxx"></div>
+          <div class="field"><label>メールアドレス</label><input type="email" id="sub-email" placeholder="user@example.com"></div>
+          <div class="field"><label>表示名</label><input type="text" id="sub-name" placeholder="例：田中 五段"></div>
+        </div>
+        <div style="display:flex;gap:6px;margin-top:.3rem;">
+          <button class="btn btn-p" onclick="addSubAdmin()">追加する</button>
+          <button class="btn btn-s" onclick="toggleSubAdminForm()">取消</button>
+        </div>
+      </div>
+      <table>
+        <thead><tr><th>名前</th><th>メール</th><th>UID</th><th>操作</th></tr></thead>
+        <tbody id="subadmins-body"><tr><td colspan="4" class="empty">読み込み中...</td></tr></tbody>
+      </table>
+    </div>
+
+    <!-- コンテンツ管理 -->
     <div class="card">
-      <h2>🎯 棋譜管理</h2>
+      <h2>🎯 コンテンツ管理</h2>
       <table>
         <thead><tr><th>タイトル</th><th>種別</th><th>サイズ</th><th>閲覧</th><th>購入</th><th>投稿者</th><th>操作</th></tr></thead>
         <tbody id="kifu-body"><tr><td colspan="7" class="empty">読み込み中...</td></tr></tbody>
@@ -192,7 +227,7 @@ onAuthStateChanged(auth, async user => {
     </div>
 
     <!-- 購入履歴 -->
-    <div class="card">
+    <div class="card admin-only">
       <h2>💳 購入履歴</h2>
       <table>
         <thead><tr><th>種別</th><th>ユーザーID</th><th>棋譜</th><th>購入日</th><th>金額</th></tr></thead>
@@ -210,7 +245,59 @@ function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').repl
 function toggleAddForm(){const f=document.getElementById('add-form');f.style.display=f.style.display==='block'?'none':'block';}
 
 async function loadAll(){
-  await Promise.all([loadAdmins(), loadKifu(), loadPurchases()]);
+  const tasks = [loadKifu()];
+  if (window.IS_ADMIN) tasks.push(loadAdmins(), loadSubAdmins(), loadPurchases());
+  await Promise.all(tasks);
+}
+
+/* ── サブ管理者 ── */
+let subAdminsData = [];
+async function loadSubAdmins(){
+  if(!window.FB)return;
+  try{
+    const snap=await FB.getDocs(FB.collection(FB.db,'sub_admins'));
+    subAdminsData=snap.docs.map(d=>({id:d.id,...d.data()}));
+    const tb=document.getElementById('subadmins-body');
+    if(!tb) return;
+    if(!subAdminsData.length){tb.innerHTML='<tr><td colspan="4" class="empty">投稿者がいません</td></tr>';return;}
+    tb.innerHTML=subAdminsData.map(a=>`
+      <tr>
+        <td>${esc(a.name||'—')}</td>
+        <td>${esc(a.email||'—')}</td>
+        <td style="font-size:.67rem;color:#8a7050;font-family:monospace;max-width:100px;overflow:hidden;text-overflow:ellipsis;">${esc(a.id)}</td>
+        <td><button class="btn btn-d" onclick="removeSubAdmin('${a.id}')">削除</button></td>
+      </tr>`).join('');
+  }catch(e){console.warn(e);}
+}
+
+function toggleSubAdminForm(){
+  const f=document.getElementById('add-sub-form');
+  f.style.display=f.style.display==='block'?'none':'block';
+}
+
+async function addSubAdmin(){
+  const uid  =document.getElementById('sub-uid').value.trim();
+  const email=document.getElementById('sub-email').value.trim();
+  const name =document.getElementById('sub-name').value.trim();
+  if(!uid){showToast('UIDは必須です');return;}
+  if(!email){showToast('メールアドレスを入力してください');return;}
+  try{
+    await FB.setDoc(FB.doc(FB.db,'sub_admins',uid),{
+      email,name:name||email,
+      addedBy:window.CU.uid,
+      createdAt:FB.serverTimestamp()
+    });
+    showToast('✓ 投稿者を追加しました');
+    ['sub-uid','sub-email','sub-name'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+    toggleSubAdminForm();
+    loadSubAdmins();
+  }catch(e){showToast('エラー: '+e.message,4000);}
+}
+
+async function removeSubAdmin(uid){
+  if(!confirm('この投稿者を削除しますか？'))return;
+  try{await FB.deleteDoc(FB.doc(FB.db,'sub_admins',uid));showToast('削除しました');loadSubAdmins();}
+  catch(e){showToast('エラー: '+e.message,4000);}
 }
 
 /* ADMINS */
@@ -274,8 +361,8 @@ async function loadKifu(){
     if(!kifuData.length){tb.innerHTML='<tr><td colspan="7" class="empty">棋譜がありません</td></tr>';return;}
     tb.innerHTML=kifuData.map(k=>`
       <tr>
-        <td style="font-weight:500;max-width:200px;">${esc(k.title||'無題')}</td>
-        <td>${k.isPremium?'<span class="badge b-yes">有料解説</span>':'<span class="badge b-no">無料</span>'}</td>
+        <td style="font-weight:500;max-width:200px;">${k.contentType==='lecture'?'📚':'🎯'} ${esc(k.title||'無題')}</td>
+        <td>${k.contentType==='lecture'?'<span class="badge b-ai">講座</span>':'<span class="badge b-no">棋譜</span>'} ${k.isPremium?'<span class="badge b-yes">有料</span>':'<span class="badge" style="background:#f0f0f0;color:#666;">無料</span>'}</td>
         <td style="font-size:.72rem;color:#8a7050;">${k.sgfText?Math.round(k.sgfText.length/1024)+'KB':'—'}</td>
         <td style="text-align:center;">${k.views||0}</td>
         <td style="text-align:center;">${k.purchases||0}</td>
