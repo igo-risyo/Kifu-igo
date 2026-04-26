@@ -847,6 +847,41 @@ function downloadCurrentSGF() {
 /* ═══════════════════════════════════════
    講座表示
 ═══════════════════════════════════════ */
+/* 講座用独立変数（グローバルのmoves/boardSizeと混ざらないよう分離） */
+let lecMoves = [], lecCur = 0, lecBoardSize = 19;
+
+/* 講座用の独立したgetBoardAt（グローバルmoves/boardSizeを使わない） */
+function lecGetBoardAt(upTo) {
+  const sz = lecBoardSize;
+  const board = Array.from({length:sz}, () => new Array(sz).fill(null));
+  let agB = 0, agW = 0;
+  const inB = (x,y) => x>=0&&y>=0&&x<sz&&y<sz;
+  const nbrs = (x,y) => [[x-1,y],[x+1,y],[x,y-1],[x,y+1]].filter(([a,b])=>inB(a,b));
+  function grp(x,y){
+    const color=board[y][x];if(!color)return null;
+    const stones=[],libs=new Set(),visited=new Set(),stack=[[x,y]];
+    while(stack.length){const[cx,cy]=stack.pop();const k=`${cx},${cy}`;if(visited.has(k))continue;visited.add(k);stones.push([cx,cy]);
+      for(const[nx,ny]of nbrs(cx,cy)){if(!board[ny][nx])libs.add(`${nx},${ny}`);else if(board[ny][nx]===color)stack.push([nx,ny]);}}
+    return{stones,libs};
+  }
+  function dead(color){
+    const checked=new Set();
+    for(let y=0;y<sz;y++)for(let x=0;x<sz;x++){
+      if(board[y][x]!==color)continue;const k=`${x},${y}`;if(checked.has(k))continue;
+      const g=grp(x,y);g.stones.forEach(([a,b])=>checked.add(`${a},${b}`));
+      if(g.libs.size===0)g.stones.forEach(([a,b])=>{board[b][a]=null;});
+    }
+  }
+  const limit = Math.min(upTo, lecMoves.length);
+  for(let i=0;i<limit;i++){
+    const mv=lecMoves[i];if(mv.x<0||mv.y<0)continue;
+    board[mv.y][mv.x]=mv.color;
+    const opp=mv.color==='B'?'W':'B';
+    dead(opp);dead(mv.color);
+  }
+  return board;
+}
+
 async function selectLecture(id) {
   document.querySelectorAll('.ki').forEach(li =>
     li.classList.toggle('active', li.getAttribute('onclick')?.includes(`'${id}'`)));
@@ -855,19 +890,21 @@ async function selectLecture(id) {
   if (!meta) return;
 
   const lv = document.getElementById('lecture-viewer');
-  const kifuCard = document.querySelector('.card:has(#viewer-grid)') ||
-                   document.getElementById('viewer-grid')?.closest('.card');
-  const movesCard = document.querySelector('#moves-area')?.closest('.card');
-  const aiCard    = document.getElementById('ai-card');
 
-  // 棋譜ビューアを隠して講座ビューアを表示
+  // 棋譜ビューア関連カードを id で確実に取得して非表示
+  const viewerCard = document.getElementById('viewer-grid');
+  const kifuCard   = viewerCard ? viewerCard.closest('.card') : null;
+  const movesCard  = document.getElementById('moves-area')
+                     ? document.getElementById('moves-area').closest('.card') : null;
+  const aiCard     = document.getElementById('ai-card');
+
   if (kifuCard)  kifuCard.style.display  = 'none';
   if (movesCard) movesCard.style.display = 'none';
   if (aiCard)    aiCard.style.display    = 'none';
-  lv.style.display = '';
+  lv.style.display = 'block';
 
   // 購入済みチェック
-  let hasPurchased = !meta.isPremium || window.IS_ADMIN;
+  let hasPurchased = !meta.isPremium || window.IS_ADMIN || window.IS_SUB_ADMIN;
   if (meta.isPremium && !hasPurchased && window.CU && window.FB?.db) {
     try {
       const s = await FB.getDoc(FB.doc(FB.db,'purchases',`${window.CU.uid}_${id}`));
@@ -895,33 +932,43 @@ async function selectLecture(id) {
     return;
   }
 
-  // 講座表示
+  // ── 講座コンテンツ表示 ──
   let html2 = `<div class="lecture-card">
     <div class="lecture-title">📚 ${esc(meta.title||'無題')}</div>`;
 
-  // YouTube
+  // YouTube動画
   if (meta.youtube) {
     const ytId = extractYouTubeId(meta.youtube);
-    if (ytId) html2 += `<div class="lecture-youtube"><iframe src="https://www.youtube.com/embed/${ytId}" frameborder="0" allowfullscreen></iframe></div>`;
+    if (ytId) html2 += `<div class="lecture-youtube">
+      <iframe src="https://www.youtube.com/embed/${ytId}" frameborder="0"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+        allowfullscreen></iframe>
+    </div>`;
   }
-  // 本文
+
+  // 本文テキスト
   if (meta.body) html2 += `<div class="lecture-body">${esc(meta.body)}</div>`;
 
-  // SGF再生
+  // SGF棋譜（講座用独立ビューア）
   if (meta.sgfText) {
-    html2 += `<div style="margin-top:.6rem;border-top:1px solid var(--border);padding-top:.7rem;">
-      <div style="font-size:.76rem;color:var(--accent);font-weight:500;margin-bottom:.5rem;">📎 添付棋譜</div>
-      <div id="lec-viewer-wrap" style="display:flex;gap:.8rem;align-items:flex-start;flex-wrap:wrap;">
+    html2 += `
+    <div style="margin-top:.8rem;border-top:1px solid var(--border);padding-top:.8rem;">
+      <div style="font-size:.78rem;color:var(--accent);font-weight:600;margin-bottom:.6rem;">📎 添付棋譜</div>
+      <div style="display:flex;gap:.8rem;align-items:flex-start;flex-wrap:wrap;">
         <div style="display:flex;flex-direction:column;align-items:center;gap:.5rem;">
-          <canvas id="lec-goban" width="320" height="320" style="border:3px solid var(--grid);border-radius:2px;background:#dcb468;box-shadow:3px 3px 10px var(--shadow);"></canvas>
-          <div style="display:flex;gap:4px;">
+          <canvas id="lec-goban" width="340" height="340"
+            style="border:3px solid var(--grid);border-radius:2px;background:#dcb468;box-shadow:3px 3px 10px var(--shadow);max-width:100%;"></canvas>
+          <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;justify-content:center;">
             <button class="ctrl-btn" onclick="lecGoTo(0)">|◀</button>
+            <button class="ctrl-btn" onclick="lecStep(-10)">«</button>
             <button class="ctrl-btn" onclick="lecStep(-1)">◀</button>
-            <span id="lec-counter" style="font-size:.74rem;color:var(--accent);min-width:60px;text-align:center;">0 / 0</span>
+            <span id="lec-counter" style="font-size:.74rem;color:var(--accent);min-width:65px;text-align:center;">0 / 0</span>
             <button class="ctrl-btn" onclick="lecStep(1)">▶</button>
+            <button class="ctrl-btn" onclick="lecStep(10)">»</button>
             <button class="ctrl-btn" onclick="lecGoTo(lecMoves.length)">▶|</button>
           </div>
         </div>
+        <div id="lec-moves-area" style="display:flex;flex-wrap:wrap;gap:3px;max-height:200px;overflow-y:auto;flex:1;min-width:120px;align-content:flex-start;"></div>
       </div>
     </div>`;
   }
@@ -931,42 +978,75 @@ async function selectLecture(id) {
 
   lv.innerHTML = html2;
 
-  // SGFがあれば描画
+  // SGFを講座用変数にパース（グローバルのmoves/boardSizeを書き換えない）
   if (meta.sgfText) {
-    parseSGF(meta.sgfText);
-    lecMoves = [...moves]; // グローバルのmovesをコピー
-    lecCur = 0;
+    // 一時的にグローバル変数を退避してSGFをパース
+    const savedMoves = moves, savedBoardSize = boardSize,
+          savedPB = playerBlack, savedPW = playerWhite,
+          savedRB = rankBlack,   savedRW = rankWhite,
+          savedEV = eventName,   savedGN = gameName;
+
+    parseSGF(meta.sgfText); // グローバル変数を一時的に書き換え
+    lecMoves     = [...moves];
+    lecBoardSize = boardSize;
+    lecCur       = 0;
+
+    // グローバル変数を元に戻す
+    moves = savedMoves; boardSize = savedBoardSize;
+    playerBlack = savedPB; playerWhite = savedPW;
+    rankBlack = savedRB;   rankWhite = savedRW;
+    eventName = savedEV;   gameName = savedGN;
+
+    // 手順バッジを生成
+    const badgesEl = document.getElementById('lec-moves-area');
+    if (badgesEl) {
+      badgesEl.innerHTML = lecMoves.map((mv, i) => {
+        const col = mv.color === 'B' ? '●' : '○';
+        return `<span style="background:var(--paper2);border:1px solid var(--border);border-radius:3px;padding:2px 5px;font-size:.68rem;cursor:pointer;"
+          onclick="lecGoTo(${i+1})">${i+1}${col}</span>`;
+      }).join('');
+    }
+
     drawLecBoard();
-    document.getElementById('lec-counter').textContent = `0 / ${lecMoves.length}`;
+    const el = document.getElementById('lec-counter');
+    if (el) el.textContent = `0 / ${lecMoves.length}`;
   }
 }
 
-let lecMoves = [], lecCur = 0;
 function lecGoTo(n) {
   lecCur = Math.max(0, Math.min(n, lecMoves.length));
   drawLecBoard();
   const el = document.getElementById('lec-counter');
   if (el) el.textContent = `${lecCur} / ${lecMoves.length}`;
+  // バッジのハイライト更新
+  const ba = document.getElementById('lec-moves-area');
+  if (ba) ba.querySelectorAll('span').forEach((b,i) => {
+    b.style.background = (i+1 === lecCur) ? 'var(--accent)' : '';
+    b.style.color      = (i+1 === lecCur) ? '#fff' : '';
+  });
 }
 function lecStep(d) { lecGoTo(lecCur + d); }
+
 function drawLecBoard() {
   const c = document.getElementById('lec-goban'); if (!c) return;
   const ctx2 = c.getContext('2d');
-  const sz = boardSize;
+  const sz = lecBoardSize;
   const { pad, cell } = drawBoardBase(c, ctx2, sz);
-  // 盤面計算（石取り適用）
-  const origMoves = moves; moves = lecMoves;
-  const { board } = getBoardAt(lecCur);
-  moves = origMoves;
+
+  // ★ 講座専用のgetBoardAt（グローバルmovesを汚染しない）
+  const board = lecGetBoardAt(lecCur);
+
   for (let r=0;r<sz;r++) for (let cc=0;cc<sz;cc++) {
     if (!board[r][cc]) continue;
     drawStone(ctx2, pad+cc*cell, pad+r*cell, cell*.46, board[r][cc]==='B');
   }
-  if (lecCur>0&&lecMoves[lecCur-1]) {
-    const lv2=lecMoves[lecCur-1];
-    if (lv2.x>=0&&board[lv2.y]?.[lv2.x]) {
-      ctx2.strokeStyle=lv2.color==='B'?'rgba(255,255,255,.85)':'rgba(0,0,0,.65)';
-      ctx2.lineWidth=1.5;ctx2.beginPath();ctx2.arc(pad+lv2.x*cell,pad+lv2.y*cell,cell*.17,0,Math.PI*2);ctx2.stroke();
+  // 最後の手マーク
+  if (lecCur > 0 && lecMoves[lecCur-1]) {
+    const lv2 = lecMoves[lecCur-1];
+    if (lv2.x >= 0 && board[lv2.y]?.[lv2.x]) {
+      ctx2.strokeStyle = lv2.color==='B' ? 'rgba(255,255,255,.85)' : 'rgba(0,0,0,.65)';
+      ctx2.lineWidth = 1.5;
+      ctx2.beginPath(); ctx2.arc(pad+lv2.x*cell, pad+lv2.y*cell, cell*.17, 0, Math.PI*2); ctx2.stroke();
     }
   }
 }
@@ -974,8 +1054,11 @@ function drawLecBoard() {
 function closeLecture() {
   const lv = document.getElementById('lecture-viewer');
   lv.style.display = 'none'; lv.innerHTML = '';
-  const kifuCard = document.getElementById('viewer-grid')?.closest('.card');
-  const movesCard = document.getElementById('moves-area')?.closest('.card');
+  lecMoves = []; lecCur = 0;
+  const viewerCard = document.getElementById('viewer-grid');
+  const kifuCard   = viewerCard ? viewerCard.closest('.card') : null;
+  const movesCard  = document.getElementById('moves-area')
+                     ? document.getElementById('moves-area').closest('.card') : null;
   const aiCard = document.getElementById('ai-card');
   if (kifuCard)  kifuCard.style.display  = '';
   if (movesCard) movesCard.style.display = '';
@@ -1312,25 +1395,6 @@ function drawVariationBoard(vi, varMoves, step, varBase) {
   for (let r = 0; r < sz; r++) for (let cc = 0; cc < sz; cc++) {
     if (!board[r][cc]) continue;
     drawStone(ctx2, pad + cc * cell, pad + r * cell, cell * .44, board[r][cc] === 'B');
-  }
-
-  // ★ 本手順の「分岐点の手」を参考として表示
-  // （変化図は「この手の代わりに○○と打ったら」という分析なので、
-  //   この手自体は変化図には登場しない。参考として×マークで示す）
-  if (branchMove && branchMove.x >= 0 && branchMove.y >= 0) {
-    const bx = pad + branchMove.x * cell;
-    const by = pad + branchMove.y * cell;
-    const isBlack = branchMove.color === 'B';
-    // 本手順の手を薄く描画
-    ctx2.globalAlpha = 0.30;
-    drawStone(ctx2, bx, by, cell * .44, isBlack);
-    ctx2.globalAlpha = 1;
-    // 「本手順」ラベル
-    ctx2.fillStyle = isBlack ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.6)';
-    ctx2.font = `bold ${Math.max(6, Math.floor(cell * .28))}px sans-serif`;
-    ctx2.textAlign = 'center';
-    ctx2.textBaseline = 'middle';
-    ctx2.fillText('実', bx, by);
   }
 
   if (step === 0) return;
