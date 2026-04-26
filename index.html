@@ -890,13 +890,11 @@ async function selectLecture(id) {
   if (!meta) return;
 
   const lv = document.getElementById('lecture-viewer');
-
-  // 棋譜ビューア関連カードを id で確実に取得して非表示
   const viewerCard = document.getElementById('viewer-grid');
   const kifuCard   = viewerCard ? viewerCard.closest('.card') : null;
   const movesCard  = document.getElementById('moves-area')
                      ? document.getElementById('moves-area').closest('.card') : null;
-  const aiCard     = document.getElementById('ai-card');
+  const aiCard = document.getElementById('ai-card');
 
   if (kifuCard)  kifuCard.style.display  = 'none';
   if (movesCard) movesCard.style.display = 'none';
@@ -935,12 +933,20 @@ async function selectLecture(id) {
   // ── 講座コンテンツ表示 ──
   let html2 = `<div class="lecture-card">
     <div class="lecture-title">📚 ${esc(meta.title||'無題')}</div>`;
-    if (ytId) html2 += `<div class="lecture-youtube"><iframe src="https://www.youtube.com/embed/${ytId}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe></div>`;
+
+  // YouTube動画
+  if (meta.youtube) {
+    const ytId = extractYouTubeId(meta.youtube);
+    if (ytId) html2 += `<div class="lecture-youtube">
+      <iframe src="https://www.youtube.com/embed/${ytId}" frameborder="0"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+        allowfullscreen></iframe></div>`;
   }
+
   // 本文テキスト
   if (meta.body) html2 += `<div class="lecture-body">${esc(meta.body)}</div>`;
 
-  // SGF棋譜
+  // SGF棋譜ビューア
   if (meta.sgfText) {
     html2 += `
     <div style="margin-top:.8rem;border-top:1px solid var(--border);padding-top:.8rem;">
@@ -970,26 +976,25 @@ async function selectLecture(id) {
       </div>
       <div id="lec-moves-area" style="display:flex;flex-wrap:wrap;gap:3px;margin-top:.6rem;max-height:80px;overflow-y:auto;"></div>
     </div>`;
+  }
 
   html2 += `<button onclick="closeLecture()" style="margin-top:.9rem;background:none;border:1px solid var(--border);border-radius:4px;padding:5px 12px;cursor:pointer;font-size:.76rem;">← 一覧に戻る</button>
   </div>`;
 
   lv.innerHTML = html2;
 
-  // SGFを講座用変数にパース（グローバルのmoves/boardSizeを書き換えない）
+  // SGFを講座用変数にパース（グローバル変数を汚染しない）
   if (meta.sgfText) {
-    // 一時的にグローバル変数を退避してSGFをパース
     const savedMoves = moves, savedBoardSize = boardSize,
           savedPB = playerBlack, savedPW = playerWhite,
           savedRB = rankBlack,   savedRW = rankWhite,
           savedEV = eventName,   savedGN = gameName;
 
-    parseSGF(meta.sgfText); // グローバル変数を一時的に書き換え
+    parseSGF(meta.sgfText);
     lecMoves     = [...moves];
     lecBoardSize = boardSize;
     lecCur       = 0;
 
-    // グローバル変数を元に戻す
     moves = savedMoves; boardSize = savedBoardSize;
     playerBlack = savedPB; playerWhite = savedPW;
     rankBlack = savedRB;   rankWhite = savedRW;
@@ -1000,20 +1005,18 @@ async function selectLecture(id) {
     if (badgesEl) {
       badgesEl.innerHTML = lecMoves.map((mv, i) => {
         const col = mv.color === 'B' ? '●' : '○';
-        return `<span style="background:var(--paper2);border:1px solid var(--border);border-radius:3px;padding:2px 5px;font-size:.68rem;cursor:pointer;"
-          onclick="lecGoTo(${i+1})">${i+1}${col}</span>`;
+        const hc = mv.comment ? ' hc' : '';
+        return `<span class="mv-badge${hc}" onclick="lecGoTo(${i+1})">${i+1}${col}</span>`;
       }).join('');
     }
 
-    // 初期状態の表示を更新
-    drawLecBoard();
-    const el = document.getElementById('lec-counter');
-    if (el) el.textContent = `0 / ${lecMoves.length}`;
-
-    // 初期状態のコメント・手番表示（手前に進むと更新される）
     const commentElInit = document.getElementById('lec-comment');
     if (commentElInit) commentElInit.style.display = 'none';
     lecVarCurStep = {};
+
+    drawLecBoard();
+    const el = document.getElementById('lec-counter');
+    if (el) el.textContent = `0 / ${lecMoves.length}`;
   }
 }
 
