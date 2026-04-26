@@ -165,6 +165,28 @@ canvas.ref-goban{border:2px solid var(--grid);border-radius:2px;box-shadow:2px 2
 #toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(80px);background:var(--ink);color:var(--paper);padding:8px 18px;border-radius:6px;font-size:.78rem;transition:transform .3s;z-index:300;pointer-events:none;white-space:nowrap;}
 #toast.show{transform:translateX(-50%) translateY(0);}
 .empty{color:#9a8060;font-size:.74rem;text-align:center;padding:.3rem 0;}
+
+/* フィルターバー */
+.filter-bar{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:.7rem;}
+.filter-btn{padding:3px 10px;border-radius:12px;font-size:.68rem;font-weight:500;cursor:pointer;border:1px solid var(--border);background:var(--paper2);color:#7a6050;transition:.15s;white-space:nowrap;}
+.filter-btn:hover{background:var(--paper3);}
+.filter-btn.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+.filter-btn.active-free{background:#2d6a2d;color:#fff;border-color:#2d6a2d;}
+.filter-btn.active-paid{background:var(--premium);color:#fff;border-color:var(--premium);}
+.filter-btn.active-lecture{background:#1a3a5c;color:#fff;border-color:#1a3a5c;}
+
+/* コンテンツタイプバッジ */
+.badge-lecture{background:#e8f0fb;color:#1a3a5c;border:1px solid #b0c8e8;}
+
+/* 講座ビューア */
+#lecture-viewer{display:none;}
+.lecture-card{background:var(--stone-w);border:1px solid var(--border);border-radius:8px;padding:1.2rem;box-shadow:0 2px 7px var(--shadow);}
+.lecture-title{font-family:'Noto Serif JP',serif;font-size:1rem;font-weight:600;color:var(--accent);margin-bottom:.8rem;padding-bottom:.5rem;border-bottom:1px solid var(--border);}
+.lecture-body{font-size:.83rem;color:#3a2e18;line-height:2;white-space:pre-wrap;margin-bottom:.8rem;}
+.lecture-youtube{position:relative;padding-top:56.25%;border-radius:6px;overflow:hidden;margin-bottom:.8rem;}
+.lecture-youtube iframe{position:absolute;top:0;left:0;width:100%;height:100%;}
+.lecture-img{max-width:100%;border-radius:6px;margin-bottom:.6rem;display:block;}
+.lecture-purchase-cta{background:var(--premium-bg);border:1.5px solid var(--accent2);border-radius:8px;padding:1.2rem;text-align:center;display:flex;flex-direction:column;align-items:center;gap:.65rem;}
 </style>
 </head>
 <body>
@@ -202,6 +224,15 @@ async function isAdmin(user) {
     return all.docs.some(d => d.data().email === user.email);
   } catch { return false; }
 }
+// サブ管理者: 棋譜・講座の投稿のみ可能、売上・権限管理は不可
+async function isSubAdmin(user) {
+  try {
+    const s = await getDoc(doc(db,'sub_admins',user.uid));
+    if (s.exists()) return true;
+    const all = await getDocs(collection(db,'sub_admins'));
+    return all.docs.some(d => d.data().email === user.email);
+  } catch { return false; }
+}
 
 window.FB = { db, auth,
   signIn:  () => signInWithPopup(auth, prov),
@@ -219,8 +250,9 @@ onAuthStateChanged(auth, async user => {
     li.style.display = 'none'; ui.style.display = 'flex';
     document.getElementById('user-name').textContent   = user.displayName || user.email;
     document.getElementById('user-avatar').src         = user.photoURL || '';
-    window.IS_ADMIN = await isAdmin(user);
+    [window.IS_ADMIN, window.IS_SUB_ADMIN] = await Promise.all([isAdmin(user), isSubAdmin(user)]);
     document.getElementById('admin-badge').style.display = window.IS_ADMIN ? 'inline' : 'none';
+    document.getElementById('sub-badge').style.display = (!window.IS_ADMIN && window.IS_SUB_ADMIN) ? 'inline' : 'none';
   } else {
     li.style.display = 'flex'; ui.style.display = 'none';
     document.getElementById('admin-badge').style.display = 'none';
@@ -264,6 +296,7 @@ onAuthStateChanged(auth, async user => {
       <img id="user-avatar" src="" alt="">
       <span id="user-name"></span>
       <span id="admin-badge" class="admin-badge" style="display:none">管理者</span>
+      <span id="sub-badge" style="display:none;background:#2d6a2d;color:#fff;font-size:.65rem;padding:2px 6px;border-radius:8px;font-weight:600;">投稿者</span>
       <button id="btn-logout" onclick="FB.signOut()">ログアウト</button>
     </div>
   </div>
@@ -277,10 +310,14 @@ onAuthStateChanged(auth, async user => {
       <div id="upload-section"></div>
     </div>
     <div class="card">
-      <h2>📋 棋譜一覧</h2>
-      <div class="tabs">
-        <div class="tab active" onclick="switchTab(this)">一覧</div>
-        <div class="tab" onclick="switchTab(this)">ランキング</div>
+      <h2>📋 コンテンツ一覧</h2>
+      <!-- コンテンツ種別フィルター -->
+      <div class="filter-bar">
+        <button class="filter-btn active"    onclick="setFilter('all',this)">すべて</button>
+        <button class="filter-btn"           onclick="setFilter('kifu',this)">🎯 棋譜</button>
+        <button class="filter-btn"           onclick="setFilter('lecture',this)">📚 講座</button>
+        <button class="filter-btn"           onclick="setFilter('free',this)">✓ 無料</button>
+        <button class="filter-btn"           onclick="setFilter('paid',this)">💎 有料</button>
       </div>
       <ul id="kifu-list"><li class="empty">読み込み中...</li></ul>
     </div>
@@ -335,6 +372,9 @@ onAuthStateChanged(auth, async user => {
     </div>
 
     <!-- AI解析 (AI Sensei連携・無料) -->
+    <!-- 講座ビューア（棋譜ビューアと切り替え） -->
+    <div id="lecture-viewer"></div>
+
     <div class="card" id="ai-card">
       <h2>🤖 AI解析（AI Sensei / KataGo）</h2>
       <div class="ai-link-card">
@@ -419,12 +459,17 @@ function renderUploadSection() {
     sec.innerHTML = '<div class="notice">アップロードにはGoogleログインが必要です。</div>';
     return;
   }
-  if (!window.IS_ADMIN) {
-    sec.innerHTML = '<div class="notice">⚠️ アップロードは管理者のみ可能です。</div>';
+  const canUpload = window.IS_ADMIN || window.IS_SUB_ADMIN;
+  if (!canUpload) {
+    sec.innerHTML = '<div class="notice">⚠️ アップロードは管理者・投稿者のみ可能です。</div>';
     return;
   }
   sec.innerHTML = `
-  <form onsubmit="doUpload(event)">
+  <div style="display:flex;gap:6px;margin-bottom:.75rem;">
+    <button class="filter-btn active" id="uptype-kifu"    onclick="switchUploadType('kifu')">🎯 棋譜</button>
+    <button class="filter-btn"        id="uptype-lecture" onclick="switchUploadType('lecture')">📚 講座</button>
+  </div>
+  <form id="form-kifu" onsubmit="doUpload(event)">
     <div class="form-field">
       <label>棋譜タイトル</label>
       <input type="text" id="f-title" placeholder="例：序盤の定石解説①" required>
@@ -445,17 +490,57 @@ function renderUploadSection() {
     <div class="form-field">
       <label>公開設定</label>
       <select id="f-premium">
-        <option value="free">無料（解説なし）</option>
-        <option value="premium">有料解説付き（¥100）</option>
+        <option value="free">無料</option>
+        <option value="premium">有料（¥100）</option>
       </select>
     </div>
     <div class="notice" style="margin-bottom:.55rem;">
-      💡 解説は SGF の <code>C[テキスト]</code> に記述。<br>
-      参考図は <code>REF[座標1:座標2:座標3]</code> 形式（例: <code>REF[pd:qd:rd]</code>）。
+      💡 解説は <code>C[...]</code> に記述。参考図は <code>REF[pd:qd]</code> 形式。
     </div>
-    <button type="submit" class="submit-btn" id="upload-btn">アップロード</button>
+    <button type="submit" class="submit-btn" id="upload-btn">棋譜をアップロード</button>
+  </form>
+  <form id="form-lecture" style="display:none;" onsubmit="doUploadLecture(event)">
+    <div class="form-field">
+      <label>講座タイトル</label>
+      <input type="text" id="lec-title" placeholder="例：序盤の考え方①" required>
+    </div>
+    <div class="form-field">
+      <label>本文</label>
+      <textarea id="lec-body" rows="5" placeholder="講座の内容を入力..." style="background:var(--paper);border:1px solid var(--border);border-radius:4px;padding:6px 9px;font-size:.78rem;font-family:inherit;width:100%;resize:vertical;"></textarea>
+    </div>
+    <div class="form-field">
+      <label>YouTube URL（任意）</label>
+      <input type="url" id="lec-youtube" placeholder="https://www.youtube.com/watch?v=...">
+    </div>
+    <div class="form-field">
+      <label>SGFファイル添付（任意）</label>
+      <div id="lec-sgf-zone" onclick="document.getElementById('lec-sgf-input').click()"
+        style="border:2px dashed #a8935e;border-radius:5px;padding:.7rem;text-align:center;cursor:pointer;font-size:.74rem;color:#7a6040;">
+        SGFをドラッグ＆ドロップまたはクリック
+      </div>
+      <input type="file" id="lec-sgf-input" accept=".sgf" style="display:none;" onchange="pickLecSGF(this.files[0])">
+      <div id="lec-sgf-preview" style="font-size:.7rem;color:#8a7050;margin-top:3px;"></div>
+    </div>
+    <div class="form-field">
+      <label>公開設定</label>
+      <select id="lec-premium">
+        <option value="free">無料</option>
+        <option value="premium">有料（¥100）</option>
+      </select>
+    </div>
+    <button type="submit" class="submit-btn" id="lec-upload-btn">講座を投稿</button>
   </form>`;
 }
+
+function switchUploadType(type) {
+  document.getElementById('uptype-kifu').classList.toggle('active', type === 'kifu');
+  document.getElementById('uptype-lecture').classList.toggle('active', type === 'lecture');
+  const fk = document.getElementById('form-kifu');
+  const fl = document.getElementById('form-lecture');
+  if (fk) fk.style.display = type === 'kifu' ? '' : 'none';
+  if (fl) fl.style.display = type === 'lecture' ? '' : 'none';
+}
+
 
 let pendingFile = null;
 function pickFile(file) {
@@ -547,6 +632,63 @@ function readSGFFile(file) {
 /* ═══════════════════════════════════════
    棋譜一覧
 ═══════════════════════════════════════ */
+
+/* ── 講座ファイル選択 ── */
+let pendingLecSGF = null;
+function pickLecSGF(file) {
+  if (!file || !file.name.toLowerCase().endsWith('.sgf')) { showToast('SGFファイルを選択してください'); return; }
+  pendingLecSGF = file;
+  const el = document.getElementById('lec-sgf-preview');
+  if (el) el.textContent = `✓ ${file.name}  (${(file.size/1024).toFixed(1)} KB)`;
+}
+
+/* ── 講座投稿 ── */
+async function doUploadLecture(e) {
+  e.preventDefault();
+  if (!window.FB?.db) { showToast('Firebase未設定です', 3000); return; }
+  const title   = document.getElementById('lec-title').value.trim();
+  const body    = document.getElementById('lec-body').value.trim();
+  const youtube = document.getElementById('lec-youtube').value.trim();
+  const premium = document.getElementById('lec-premium').value === 'premium';
+  const btn     = document.getElementById('lec-upload-btn');
+  btn.textContent = '投稿中...'; btn.disabled = true;
+  try {
+    let sgfText = null;
+    if (pendingLecSGF) sgfText = await readSGFFile(pendingLecSGF);
+    await FB.addDoc(FB.collection(FB.db, 'kifu'), {
+      title, body, youtube, sgfText,
+      contentType:    'lecture',
+      isPremium:      premium,
+      uploadedBy:     window.CU.uid,
+      uploadedByName: window.CU.displayName || '',
+      createdAt:      FB.serverTimestamp(),
+      views: 0, purchases: 0,
+    });
+    showToast('✓ 講座を投稿しました！');
+    pendingLecSGF = null;
+    e.target.reset();
+    const pr = document.getElementById('lec-sgf-preview');
+    if (pr) pr.textContent = '';
+    loadKifuList();
+  } catch(err) {
+    console.error(err); showToast('エラー: ' + err.message, 5000);
+  } finally {
+    btn.textContent = '講座を投稿'; btn.disabled = false;
+  }
+}
+
+/* ── フィルター ── */
+let currentFilter = 'all';
+function setFilter(filter, el) {
+  currentFilter = filter;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active','active-free','active-paid','active-lecture'));
+  if (filter === 'free')    el.classList.add('active-free');
+  else if (filter === 'paid')    el.classList.add('active-paid');
+  else if (filter === 'lecture') el.classList.add('active-lecture');
+  else el.classList.add('active');
+  renderList(kifuStore); // 再描画
+}
+
 async function loadKifuList() {
   const ul = document.getElementById('kifu-list');
   ul.innerHTML = '<li class="empty">読み込み中...</li>';
@@ -570,22 +712,44 @@ function loadSampleList() {
 
 function renderList(list) {
   const ul = document.getElementById('kifu-list');
-  if (!list.length) { ul.innerHTML = '<li class="empty">棋譜がありません</li>'; return; }
-  ul.innerHTML = list.map(k => `
-    <li class="ki" onclick="selectKifu('${k.id}')">
-      <div class="ki-title">${esc(k.title||'無題')}</div>
-      <div class="ki-meta">
-        ${k.isPremium
-          ? '<span class="badge b-paid">💎 解説 ¥100</span>'
-          : '<span class="badge b-free">✓ 無料</span>'}
-        <span>👁 ${k.views||0}</span>
-      </div>
-    </li>`).join('');
+  // フィルタ適用
+  let filtered = list;
+  if (currentFilter === 'kifu')    filtered = list.filter(k => k.contentType !== 'lecture');
+  if (currentFilter === 'lecture') filtered = list.filter(k => k.contentType === 'lecture');
+  if (currentFilter === 'free')    filtered = list.filter(k => !k.isPremium);
+  if (currentFilter === 'paid')    filtered = list.filter(k => k.isPremium);
+
+  if (!filtered.length) { ul.innerHTML = '<li class="empty">該当するコンテンツがありません</li>'; return; }
+  ul.innerHTML = filtered.map(k => {
+    const isLecture = k.contentType === 'lecture';
+    const typeIcon  = isLecture ? '📚' : '🎯';
+    const typeBadge = isLecture
+      ? '<span class="badge badge-lecture">📚 講座</span>'
+      : '';
+    const priceBadge = k.isPremium
+      ? '<span class="badge b-paid">💎 有料 ¥100</span>'
+      : '<span class="badge b-free">✓ 無料</span>';
+    return `
+    <li class="ki" onclick="selectContent('${k.id}')">
+      <div class="ki-title">${typeIcon} ${esc(k.title||'無題')}</div>
+      <div class="ki-meta">${typeBadge}${priceBadge}<span>👁 ${k.views||0}</span></div>
+    </li>`;
+  }).join('');
 }
 
 /* ═══════════════════════════════════════
    棋譜選択
 ═══════════════════════════════════════ */
+async function selectContent(id) {
+  const meta = kifuStore.find(k => k.id === id);
+  if (!meta) return;
+  if (meta.contentType === 'lecture') {
+    selectLecture(id);
+  } else {
+    selectKifu(id);
+  }
+}
+
 async function selectKifu(id) {
   document.querySelectorAll('.ki').forEach(li =>
     li.classList.toggle('active', li.getAttribute('onclick').includes(`'${id}'`)));
@@ -645,8 +809,161 @@ function downloadCurrentSGF() {
 }
 
 /* ═══════════════════════════════════════
-   解説エリア描画
+   講座表示
 ═══════════════════════════════════════ */
+async function selectLecture(id) {
+  document.querySelectorAll('.ki').forEach(li =>
+    li.classList.toggle('active', li.getAttribute('onclick')?.includes(`'${id}'`)));
+
+  const meta = kifuStore.find(k => k.id === id);
+  if (!meta) return;
+
+  const lv = document.getElementById('lecture-viewer');
+  const kifuCard = document.querySelector('.card:has(#viewer-grid)') ||
+                   document.getElementById('viewer-grid')?.closest('.card');
+  const movesCard = document.querySelector('#moves-area')?.closest('.card');
+  const aiCard    = document.getElementById('ai-card');
+
+  // 棋譜ビューアを隠して講座ビューアを表示
+  if (kifuCard)  kifuCard.style.display  = 'none';
+  if (movesCard) movesCard.style.display = 'none';
+  if (aiCard)    aiCard.style.display    = 'none';
+  lv.style.display = '';
+
+  // 購入済みチェック
+  let hasPurchased = !meta.isPremium || window.IS_ADMIN;
+  if (meta.isPremium && !hasPurchased && window.CU && window.FB?.db) {
+    try {
+      const s = await FB.getDoc(FB.doc(FB.db,'purchases',`${window.CU.uid}_${id}`));
+      hasPurchased = s.exists();
+    } catch(e) {}
+  }
+
+  if (!hasPurchased) {
+    lv.innerHTML = `
+      <div class="lecture-card">
+        <div class="lecture-title">📚 ${esc(meta.title||'無題')}</div>
+        <div style="filter:blur(3px);pointer-events:none;opacity:.4;font-size:.8rem;line-height:2;margin-bottom:.8rem;">
+          この講座は有料コンテンツです。購入後に閲覧できます。
+        </div>
+        <div class="lecture-purchase-cta">
+          <h3>📖 講座を購入する</h3>
+          <p>購入後はいつでも閲覧可能です。</p>
+          <div class="price-tag">¥100 <span>（税込）</span></div>
+          <button class="pay-btn" onclick="openLecturePurchase('${id}','${esc(meta.title||'')}')">
+            Stripeで購入
+          </button>
+        </div>
+        <button onclick="closeLecture()" style="margin-top:.8rem;background:none;border:1px solid var(--border);border-radius:4px;padding:5px 12px;cursor:pointer;font-size:.76rem;">← 一覧に戻る</button>
+      </div>`;
+    return;
+  }
+
+  // 講座表示
+  let html2 = `<div class="lecture-card">
+    <div class="lecture-title">📚 ${esc(meta.title||'無題')}</div>`;
+
+  // YouTube
+  if (meta.youtube) {
+    const ytId = extractYouTubeId(meta.youtube);
+    if (ytId) html2 += `<div class="lecture-youtube"><iframe src="https://www.youtube.com/embed/${ytId}" frameborder="0" allowfullscreen></iframe></div>`;
+  }
+  // 本文
+  if (meta.body) html2 += `<div class="lecture-body">${esc(meta.body)}</div>`;
+
+  // SGF再生
+  if (meta.sgfText) {
+    html2 += `<div style="margin-top:.6rem;border-top:1px solid var(--border);padding-top:.7rem;">
+      <div style="font-size:.76rem;color:var(--accent);font-weight:500;margin-bottom:.5rem;">📎 添付棋譜</div>
+      <div id="lec-viewer-wrap" style="display:flex;gap:.8rem;align-items:flex-start;flex-wrap:wrap;">
+        <div style="display:flex;flex-direction:column;align-items:center;gap:.5rem;">
+          <canvas id="lec-goban" width="320" height="320" style="border:3px solid var(--grid);border-radius:2px;background:#dcb468;box-shadow:3px 3px 10px var(--shadow);"></canvas>
+          <div style="display:flex;gap:4px;">
+            <button class="ctrl-btn" onclick="lecGoTo(0)">|◀</button>
+            <button class="ctrl-btn" onclick="lecStep(-1)">◀</button>
+            <span id="lec-counter" style="font-size:.74rem;color:var(--accent);min-width:60px;text-align:center;">0 / 0</span>
+            <button class="ctrl-btn" onclick="lecStep(1)">▶</button>
+            <button class="ctrl-btn" onclick="lecGoTo(lecMoves.length)">▶|</button>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  html2 += `<button onclick="closeLecture()" style="margin-top:.9rem;background:none;border:1px solid var(--border);border-radius:4px;padding:5px 12px;cursor:pointer;font-size:.76rem;">← 一覧に戻る</button>
+  </div>`;
+
+  lv.innerHTML = html2;
+
+  // SGFがあれば描画
+  if (meta.sgfText) {
+    parseSGF(meta.sgfText);
+    lecMoves = [...moves]; // グローバルのmovesをコピー
+    lecCur = 0;
+    drawLecBoard();
+    document.getElementById('lec-counter').textContent = `0 / ${lecMoves.length}`;
+  }
+}
+
+let lecMoves = [], lecCur = 0;
+function lecGoTo(n) {
+  lecCur = Math.max(0, Math.min(n, lecMoves.length));
+  drawLecBoard();
+  const el = document.getElementById('lec-counter');
+  if (el) el.textContent = `${lecCur} / ${lecMoves.length}`;
+}
+function lecStep(d) { lecGoTo(lecCur + d); }
+function drawLecBoard() {
+  const c = document.getElementById('lec-goban'); if (!c) return;
+  const ctx2 = c.getContext('2d');
+  const sz = boardSize;
+  const { pad, cell } = drawBoardBase(c, ctx2, sz);
+  // 盤面計算（石取り適用）
+  const origMoves = moves; moves = lecMoves;
+  const { board } = getBoardAt(lecCur);
+  moves = origMoves;
+  for (let r=0;r<sz;r++) for (let cc=0;cc<sz;cc++) {
+    if (!board[r][cc]) continue;
+    drawStone(ctx2, pad+cc*cell, pad+r*cell, cell*.46, board[r][cc]==='B');
+  }
+  if (lecCur>0&&lecMoves[lecCur-1]) {
+    const lv2=lecMoves[lecCur-1];
+    if (lv2.x>=0&&board[lv2.y]?.[lv2.x]) {
+      ctx2.strokeStyle=lv2.color==='B'?'rgba(255,255,255,.85)':'rgba(0,0,0,.65)';
+      ctx2.lineWidth=1.5;ctx2.beginPath();ctx2.arc(pad+lv2.x*cell,pad+lv2.y*cell,cell*.17,0,Math.PI*2);ctx2.stroke();
+    }
+  }
+}
+
+function closeLecture() {
+  const lv = document.getElementById('lecture-viewer');
+  lv.style.display = 'none'; lv.innerHTML = '';
+  const kifuCard = document.getElementById('viewer-grid')?.closest('.card');
+  const movesCard = document.getElementById('moves-area')?.closest('.card');
+  const aiCard = document.getElementById('ai-card');
+  if (kifuCard)  kifuCard.style.display  = '';
+  if (movesCard) movesCard.style.display = '';
+  if (aiCard)    aiCard.style.display    = '';
+}
+
+function extractYouTubeId(url) {
+  if (!url) return null;
+  const m = url.match(/(?:v=|youtu\.be\/|embed\/)([A-Za-z0-9_-]{11})/);
+  return m ? m[1] : null;
+}
+
+function openLecturePurchase(id, title) {
+  if (!window.CU) { showToast('購入にはログインが必要です'); return; }
+  openModal('📖 講座を購入', `
+    <p style="font-size:.78rem;color:#5a4a30;line-height:1.8;margin-bottom:.8rem;">「${esc(title)}」を購入します。</p>
+    <div style="background:var(--paper2);border-radius:5px;padding:.75rem;border:1px solid var(--border);font-size:.74rem;margin-bottom:.9rem;">
+      <div style="display:flex;justify-content:space-between;font-weight:600;"><span>合計</span><span style="color:var(--accent)">¥100</span></div>
+    </div>
+    <button onclick="startCheckout()" style="width:100%;background:#635bff;color:#fff;border:none;border-radius:5px;padding:10px;font-size:.84rem;font-weight:500;cursor:pointer;font-family:inherit;">Stripeで支払う（¥100）</button>
+    <p style="font-size:.67rem;color:#9a8060;text-align:center;margin-top:.5rem;">Stripe Cloud Functionsを実装するとご利用いただけます</p>`);
+}
+
+
 function renderCommentary() {
   const area = document.getElementById('commentary-content');
   if (!currentKifu) return;
