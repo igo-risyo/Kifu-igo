@@ -180,7 +180,7 @@ import { getFirestore, doc, setDoc, getDoc, collection, getDocs, addDoc,
 
 // ▼▼▼ Firebaseプロジェクトの設定値に変更してください ▼▼▼
 const firebaseConfig = {
-  apiKey: "AIzaSyDMWj2D93inW4a5yziKyBx9twcQsQzKdl0",
+ apiKey: "AIzaSyDMWj2D93inW4a5yziKyBx9twcQsQzKdl0",
   authDomain: "kufu-igo.firebaseapp.com",
   projectId: "kufu-igo",
   storageBucket: "kufu-igo.firebasestorage.app",
@@ -711,7 +711,7 @@ function updateCommentary() {
   if (!variations.length) return;
 
   variations.forEach((variation, vi) => {
-    varCurStep[vi] = variation.moves.length; // 初期位置は最終形
+    varCurStep[vi] = varTotalSteps; // 初期位置は最終形
 
     // 変化図プレイヤーのDOM構築
     const player = document.createElement('div');
@@ -721,7 +721,10 @@ function updateCommentary() {
     // ヘッダー
     const header = document.createElement('div');
     header.className = 'var-player-header';
-    header.textContent = `変化図 ${vi + 1}（${variation.moves.length}手）`;
+    // AEのみノード（x<0）を除いた実際の手数
+    const varPlayable = variation.moves.filter(m => m.x >= 0 && m.y >= 0);
+    const varTotalSteps = varPlayable.length;
+    header.textContent = `変化図 ${vi + 1}（${varTotalSteps}手）`;
     player.appendChild(header);
 
     // コメント
@@ -740,6 +743,9 @@ function updateCommentary() {
     const c = document.createElement('canvas');
     c.className = 'ref-goban';
     c.id = `var-canvas-${vi}`;
+    // ★ 変化図のベース手数を固定（curに依存しない）
+    // 変化図はmoves[cur-1]のノードに付いているので、ベース盤面 = cur-1手目まで
+    c.dataset.varBase = String(Math.max(0, cur - 1));
     const canvasSize = boardSize >= 19 ? 300 : boardSize >= 13 ? 220 : 160;
     c.width = c.height = canvasSize;
     body.appendChild(c);
@@ -754,7 +760,7 @@ function updateCommentary() {
     ctrl.innerHTML = `
       <button class="var-btn" onclick="varGoTo(${vi},0)">|◀</button>
       <button class="var-btn" onclick="varStep(${vi},-1)">◀</button>
-      <span class="var-counter" id="var-counter-${vi}">${variation.moves.length} / ${variation.moves.length}</span>
+      <span class="var-counter" id="var-counter-${vi}">${varTotalSteps} / ${varTotalSteps}</span>
       <button class="var-btn" onclick="varStep(${vi},1)">▶</button>
       <button class="var-btn" onclick="varGoTo(${vi},${variation.moves.length})">▶|</button>
     `;
@@ -772,15 +778,16 @@ function updateCommentary() {
     b0.onclick = () => varGoTo(vi, 0);
     badges.appendChild(b0);
 
-    variation.moves.forEach((vm, i) => {
+    // AEのみノード（x<0）を除いた手のみバッジ作成
+    varPlayable.forEach((vm, pi) => {
       const GTP = 'ABCDEFGHJKLMNOPQRST';
       const pos = vm.x >= 0 ? `${GTP[vm.x]}${boardSize - vm.y}` : 'パス';
       const col = vm.color === 'B' ? '●' : vm.color === 'W' ? '○' : '?';
       const b = document.createElement('span');
       b.className = 'var-mv-badge';
-      b.dataset.vi = vi; b.dataset.step = i + 1;
-      b.textContent = `${i+1}${col}${pos}`;
-      b.onclick = () => varGoTo(vi, i + 1);
+      b.dataset.vi = vi; b.dataset.step = pi + 1;
+      b.textContent = `${pi+1}${col}${pos}`;
+      b.onclick = () => varGoTo(vi, pi + 1);
       badges.appendChild(b);
     });
     side.appendChild(badges);
@@ -794,11 +801,11 @@ function updateCommentary() {
       const initBadges = document.getElementById(`var-badges-${vi}`);
       if (initBadges) {
         initBadges.querySelectorAll('.var-mv-badge').forEach(b => {
-          b.classList.toggle('cur', parseInt(b.dataset.step) === variation.moves.length);
+          b.classList.toggle('cur', parseInt(b.dataset.step) === varTotalSteps);
         });
       }
     }, 0);
-    drawVariationBoard(vi, variation.moves, variation.moves.length);
+    drawVariationBoard(vi, variation.moves, varTotalSteps);
   });
 }
 
@@ -808,12 +815,14 @@ function varGoTo(vi, step) {
   const variation = mv?.variations?.[vi];
   if (!variation) return;
 
-  step = Math.max(0, Math.min(step, variation.moves.length));
+  // AEのみノードを除いた実際の手数で制限
+  const _playable = variation.moves.filter(m => m.x >= 0 && m.y >= 0).length;
+  step = Math.max(0, Math.min(step, _playable));
   varCurStep[vi] = step;
 
   // カウンター更新
   const counter = document.getElementById(`var-counter-${vi}`);
-  if (counter) counter.textContent = `${step} / ${variation.moves.length}`;
+  if (counter) counter.textContent = `${step} / ${_playable}`;
 
   // バッジ更新
   const badges = document.getElementById(`var-badges-${vi}`);
@@ -862,28 +871,49 @@ function _varRemoveDead(bd, color, sz) {
   }
 }
 
-/*
-  buildVarBoard(varMoves, step):
-    ベース盤面（cur-1手目まで）に変化図をstep手まで適用した盤面と
-    各手の情報を返す
 
-  返り値: { board, steps: [{x,y,n,color,alive}] }
+/*
+  buildVarBoard(vi, varMoves, step):
+    ベース盤面に変化図をstep手まで適用した盤面を返す
+    ★ AE[]対応: 変化図開始時にAEで指定された石を盤面から除去
+    ★ AEのみノード（x<0）は「石除去」として処理し手番号はカウントしない
 */
-function buildVarBoard(varMoves, step) {
+function buildVarBoard(vi, varMoves, step) {
   const sz = boardSize;
-  // ベース盤面: 変化図の分岐点の直前（cur-1手目まで）
-  const baseUpTo = Math.max(0, cur - 1);
-  const { board: baseBoard } = getBoardAt(baseUpTo);
+  // ベース手数: キャンバスのdata-var-baseから取得（curに依存しない固定値）
+  const canvas = document.getElementById(`var-canvas-${vi}`);
+  const varBase = canvas && canvas.dataset.varBase !== undefined
+    ? parseInt(canvas.dataset.varBase)
+    : Math.max(0, cur - 1);
+  const { board: baseBoard } = getBoardAt(Math.max(0, varBase));
   const bd = baseBoard.map(row => [...row]);
 
+  // ★ まず全AEを適用（変化図内のどのノードにあっても、石を除去）
+  // AEは本来「この変化図のベース盤面を修正する」ためのもの
+  // 実際には変化図の最初のノードに付くことが多い
+  varMoves.forEach(vm => {
+    if (vm.ae && vm.ae.length > 0) {
+      vm.ae.forEach(({ x, y }) => {
+        if (x >= 0 && y >= 0 && x < sz && y < sz) bd[y][x] = null;
+      });
+    }
+  });
+
+  // 手のある moves のみでstepを数える
+  const playableMoves = varMoves.filter(vm => vm.x >= 0 && vm.y >= 0);
+
   const steps = [];
-  const limit = Math.min(step, varMoves.length);
+  const limit = Math.min(step, playableMoves.length);
 
   for (let i = 0; i < limit; i++) {
-    const vm = varMoves[i];
-    if (vm.x < 0 || vm.y < 0) continue; // パス
-    const color = vm.color || (i % 2 === 0 ? 'B' : 'W');
-    if (bd[vm.y][vm.x]) continue; // 既に石がある（異常系）
+    const vm = playableMoves[i];
+    const color = vm.color || 'B';
+    if (bd[vm.y][vm.x]) {
+      // 既に石がある（SGFの問題 or AE漏れ）→ スキップ
+      console.warn(`変化図 step${i+1}: ${color}[${vm.x},${vm.y}]に既に石があります`);
+      steps.push({ x: vm.x, y: vm.y, n: i + 1, color, alive: false });
+      continue;
+    }
     bd[vm.y][vm.x] = color;
     const opp = color === 'B' ? 'W' : 'B';
     _varRemoveDead(bd, opp, sz);
@@ -891,7 +921,7 @@ function buildVarBoard(varMoves, step) {
     steps.push({ x: vm.x, y: vm.y, n: i + 1, color, alive: !!bd[vm.y][vm.x] });
   }
 
-  return { board: bd, baseBoard, steps };
+  return { board: bd, baseBoard, steps, totalSteps: playableMoves.length };
 }
 
 /*
@@ -906,7 +936,7 @@ function drawVariationBoard(vi, varMoves, step) {
   const sz = boardSize;
 
   // 変化図の盤面を計算
-  const { board, steps } = buildVarBoard(varMoves, step);
+  const { board, steps } = buildVarBoard(vi, varMoves, step);
 
   // ① 盤面ベース（格子・星）を再描画
   const { pad, cell } = drawBoardBase(c, ctx2, sz);
@@ -1011,16 +1041,26 @@ function extractBracket(text, startIdx) {
   return { value: result, end: i };
 }
 
-// ノード文字列からプロパティを取得
+// ノード文字列からプロパティを取得（複数値対応）
 function getNodeProps(nodeStr) {
   const props = {};
-  const re = /([A-Z]+)\[/g;
-  let m;
-  while ((m = re.exec(nodeStr)) !== null) {
-    const key = m[1];
-    const { value } = extractBracket(nodeStr, m.index + key.length + 1);
-    if (!props[key]) props[key] = [];
-    props[key].push(value);
+  let i = 0;
+  while (i < nodeStr.length) {
+    if (nodeStr[i] >= 'A' && nodeStr[i] <= 'Z') {
+      let key = '';
+      while (i < nodeStr.length && nodeStr[i] >= 'A' && nodeStr[i] <= 'Z') {
+        key += nodeStr[i++];
+      }
+      while (i < nodeStr.length && nodeStr[i] === '[') {
+        i++;
+        const { value, end } = extractBracket(nodeStr, i);
+        if (!props[key]) props[key] = [];
+        props[key].push(value);
+        i = end + 1;
+      }
+    } else {
+      i++;
+    }
   }
   return props;
 }
@@ -1059,15 +1099,28 @@ function extractBracket(text, pos) {
 }
 
 // ノード文字列からプロパティをすべて取得
+// ★ AE[a][b][c] のように同一キーに複数値が続く場合もすべて取得
 function getNodeProps(nodeStr) {
   const props = {};
-  const re = /([A-Z]+)\[/g;
-  let m;
-  while ((m = re.exec(nodeStr)) !== null) {
-    const key = m[1];
-    const { value } = extractBracket(nodeStr, m.index + key.length + 1);
-    if (!props[key]) props[key] = [];
-    props[key].push(value);
+  let i = 0;
+  while (i < nodeStr.length) {
+    // プロパティ識別子（大文字のみ）を探す
+    if (nodeStr[i] >= 'A' && nodeStr[i] <= 'Z') {
+      let key = '';
+      while (i < nodeStr.length && nodeStr[i] >= 'A' && nodeStr[i] <= 'Z') {
+        key += nodeStr[i++];
+      }
+      // この識別子に続く [ ] の値を全部取得
+      while (i < nodeStr.length && nodeStr[i] === '[') {
+        i++; // '[' をスキップ
+        const { value, end } = extractBracket(nodeStr, i);
+        if (!props[key]) props[key] = [];
+        props[key].push(value);
+        i = end + 1; // ']' の次へ
+      }
+    } else {
+      i++;
+    }
   }
   return props;
 }
@@ -1147,43 +1200,60 @@ function parseSGFTree(text, pos) {
 
 /*
   flattenMainLine: ツリーをメインライン（最初の子を辿る）でフラット化
-  各要素に variations（変化図）を付与
+  AE[]対応: 変化図ノードのAEプロパティを記録し、buildVarBoardで適用
 */
 function flattenMainLine(sequence) {
   const result = [];
+
+  function collectVarMoves(seq) {
+    // 変化図のメインライン（firstChildを辿る）をフラット化
+    // AE[]はそのノードの情報として保持
+    const varMoves = [];
+    function walk(s) {
+      for (const vn of s) {
+        const vp = vn.props;
+        const vc = (vp.C && vp.C[0]) ? vp.C[0] : '';
+        // AE: Add Empty（石を除去）
+        const aeList = vp.AE ? vp.AE.map(s2 => sgfXY(s2)).filter(p2 => p2.x >= 0) : [];
+
+        if (vp.B) {
+          varMoves.push({ color:'B', ...sgfXY(vp.B[0]), comment: vc, ae: aeList });
+        } else if (vp.W) {
+          varMoves.push({ color:'W', ...sgfXY(vp.W[0]), comment: vc, ae: aeList });
+        } else if (aeList.length > 0 || vc) {
+          // 手なし・AEのみ or コメントのみのノード
+          varMoves.push({ color: null, x: -1, y: -1, comment: vc, ae: aeList });
+        }
+        if (vn.firstChild) walk(vn.firstChild);
+      }
+    }
+    walk(seq);
+    // 先頭にAE情報をまとめる（最初のノードのAEが変化図全体の除去石）
+    const initAE = [];
+    for (const vm of varMoves) {
+      if (vm.ae && vm.ae.length > 0) { initAE.push(...vm.ae); break; }
+    }
+    // コメントは最後のもの or AEノードの次のコメントを使用
+    const varComment = varMoves.reduce((acc, vm) => vm.comment || acc, '');
+    return { moves: varMoves, comment: varComment, initAE };
+  }
+
   function walk(seq) {
     for (const node of seq) {
       const p = node.props;
       const comment = (p.C && p.C[0]) ? p.C[0] : '';
 
-      // 変化図: otherChildren を参考図として収集
+      // 変化図: otherChildren
       const variations = node.otherChildren.map(childSeq => {
-        const varMoves = [];
-        // 変化図のフラットな手順（変化図内の本筋のみ）
-        function collectVarMoves(seq2) {
-          for (const vn of seq2) {
-            const vp = vn.props;
-            const vc = (vp.C && vp.C[0]) ? vp.C[0] : '';
-            if (vp.B) varMoves.push({ color:'B', ...sgfXY(vp.B[0]), comment: vc });
-            else if (vp.W) varMoves.push({ color:'W', ...sgfXY(vp.W[0]), comment: vc });
-            else if (vc) varMoves.push({ color:null, x:-1, y:-1, comment: vc });
-            // 変化図内の最初の子（さらに深い本筋）も追跡
-            if (vn.firstChild) collectVarMoves(vn.firstChild);
-          }
-        }
-        collectVarMoves(childSeq);
-        const varComment = varMoves.reduce((acc, vm) => vm.comment || acc, '');
-        return { moves: varMoves, comment: varComment };
-      }).filter(v => v.moves.length > 0);
+        return collectVarMoves(childSeq);
+      }).filter(v => v.moves.filter(m => m.x >= 0).length > 0 || v.comment);
 
       if (p.B) {
         result.push({ color:'B', ...sgfXY(p.B[0]), comment, variations });
       } else if (p.W) {
         result.push({ color:'W', ...sgfXY(p.W[0]), comment, variations });
       }
-      // ヘッダーノード（B/Wなし）はスキップして続く
 
-      // 本譜の続きへ（firstChild）
       if (node.firstChild) walk(node.firstChild);
     }
   }
