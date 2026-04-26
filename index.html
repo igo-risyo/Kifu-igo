@@ -935,27 +935,18 @@ async function selectLecture(id) {
   // ── 講座コンテンツ表示 ──
   let html2 = `<div class="lecture-card">
     <div class="lecture-title">📚 ${esc(meta.title||'無題')}</div>`;
-
-  // YouTube動画
-  if (meta.youtube) {
-    const ytId = extractYouTubeId(meta.youtube);
-    if (ytId) html2 += `<div class="lecture-youtube">
-      <iframe src="https://www.youtube.com/embed/${ytId}" frameborder="0"
-        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-        allowfullscreen></iframe>
-    </div>`;
+    if (ytId) html2 += `<div class="lecture-youtube"><iframe src="https://www.youtube.com/embed/${ytId}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe></div>`;
   }
-
   // 本文テキスト
   if (meta.body) html2 += `<div class="lecture-body">${esc(meta.body)}</div>`;
 
-  // SGF棋譜（講座用独立ビューア）
+  // SGF棋譜
   if (meta.sgfText) {
     html2 += `
     <div style="margin-top:.8rem;border-top:1px solid var(--border);padding-top:.8rem;">
       <div style="font-size:.78rem;color:var(--accent);font-weight:600;margin-bottom:.6rem;">📎 添付棋譜</div>
-      <div style="display:flex;gap:.8rem;align-items:flex-start;flex-wrap:wrap;">
-        <div style="display:flex;flex-direction:column;align-items:center;gap:.5rem;">
+      <div style="display:flex;gap:.9rem;align-items:flex-start;flex-wrap:wrap;">
+        <div style="display:flex;flex-direction:column;align-items:center;gap:.5rem;flex-shrink:0;">
           <canvas id="lec-goban" width="340" height="340"
             style="border:3px solid var(--grid);border-radius:2px;background:#dcb468;box-shadow:3px 3px 10px var(--shadow);max-width:100%;"></canvas>
           <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;justify-content:center;">
@@ -968,10 +959,17 @@ async function selectLecture(id) {
             <button class="ctrl-btn" onclick="lecGoTo(lecMoves.length)">▶|</button>
           </div>
         </div>
-        <div id="lec-moves-area" style="display:flex;flex-wrap:wrap;gap:3px;max-height:200px;overflow-y:auto;flex:1;min-width:120px;align-content:flex-start;"></div>
+        <div style="flex:1;min-width:180px;display:flex;flex-direction:column;gap:.6rem;">
+          <div style="display:flex;align-items:center;gap:7px;padding:.38rem .65rem;background:var(--paper2);border-radius:5px;font-size:.74rem;border:1px solid var(--border);">
+            <span id="lec-stone-ind" style="width:12px;height:12px;border-radius:50%;display:inline-block;flex-shrink:0;"></span>
+            <span id="lec-move-lbl">棋譜を再生してください</span>
+          </div>
+          <div id="lec-comment" style="font-size:.8rem;color:#3a2e18;line-height:2;white-space:pre-wrap;background:var(--paper2);border-radius:5px;padding:.5rem .7rem;border:1px solid var(--border);display:none;"></div>
+          <div id="lec-variations"></div>
+        </div>
       </div>
+      <div id="lec-moves-area" style="display:flex;flex-wrap:wrap;gap:3px;margin-top:.6rem;max-height:80px;overflow-y:auto;"></div>
     </div>`;
-  }
 
   html2 += `<button onclick="closeLecture()" style="margin-top:.9rem;background:none;border:1px solid var(--border);border-radius:4px;padding:5px 12px;cursor:pointer;font-size:.76rem;">← 一覧に戻る</button>
   </div>`;
@@ -1007,25 +1005,207 @@ async function selectLecture(id) {
       }).join('');
     }
 
+    // 初期状態の表示を更新
     drawLecBoard();
     const el = document.getElementById('lec-counter');
     if (el) el.textContent = `0 / ${lecMoves.length}`;
+
+    // 初期状態のコメント・手番表示（手前に進むと更新される）
+    const commentElInit = document.getElementById('lec-comment');
+    if (commentElInit) commentElInit.style.display = 'none';
+    lecVarCurStep = {};
   }
 }
 
 function lecGoTo(n) {
   lecCur = Math.max(0, Math.min(n, lecMoves.length));
   drawLecBoard();
+
+  // カウンター更新
   const el = document.getElementById('lec-counter');
   if (el) el.textContent = `${lecCur} / ${lecMoves.length}`;
+
   // バッジのハイライト更新
   const ba = document.getElementById('lec-moves-area');
-  if (ba) ba.querySelectorAll('span').forEach((b,i) => {
-    b.style.background = (i+1 === lecCur) ? 'var(--accent)' : '';
-    b.style.color      = (i+1 === lecCur) ? '#fff' : '';
+  if (ba) ba.querySelectorAll('span').forEach((b, i) => {
+    b.style.background = (i + 1 === lecCur) ? 'var(--accent)' : '';
+    b.style.color      = (i + 1 === lecCur) ? '#fff' : '';
   });
+
+  // 手番表示
+  const GTP = 'ABCDEFGHJKLMNOPQRST';
+  const ind = document.getElementById('lec-stone-ind');
+  const lbl = document.getElementById('lec-move-lbl');
+  if (ind && lbl) {
+    if (lecCur > 0 && lecMoves[lecCur - 1]) {
+      const mv = lecMoves[lecCur - 1];
+      ind.style.cssText = `width:12px;height:12px;border-radius:50%;display:inline-block;flex-shrink:0;` +
+        (mv.color === 'B' ? 'background:#1c1c1c;' : 'background:#f0ede6;border:1px solid #999;');
+      const pos = mv.x >= 0 ? `${GTP[mv.x]}${lecBoardSize - mv.y}` : 'パス';
+      lbl.textContent = `第${lecCur}手　${mv.color === 'B' ? '黒' : '白'} ${pos}`;
+    } else {
+      ind.style.cssText = 'width:12px;height:12px;border-radius:50%;display:inline-block;flex-shrink:0;';
+      lbl.textContent = '初期盤面';
+    }
+  }
+
+  // コメント表示
+  const commentEl = document.getElementById('lec-comment');
+  if (commentEl) {
+    const mv = lecCur > 0 ? lecMoves[lecCur - 1] : null;
+    const comment = mv?.comment || '';
+    if (comment) {
+      commentEl.textContent = comment;
+      commentEl.style.display = '';
+    } else {
+      commentEl.style.display = 'none';
+    }
+  }
+
+  // 変化図表示（講座でも同じ仕組みを流用）
+  updateLecVariations();
 }
 function lecStep(d) { lecGoTo(lecCur + d); }
+
+/* 講座の変化図を表示
+   buildVarBoard / drawVariationBoard はグローバルのmoves/boardSizeを使うので
+   講座データで一時的に上書きしてから呼び出す */
+function updateLecVariations() {
+  const varEl = document.getElementById('lec-variations');
+  if (!varEl) return;
+  varEl.innerHTML = '';
+
+  const mv = lecCur > 0 ? lecMoves[lecCur - 1] : null;
+  const variations = mv?.variations || [];
+  if (!variations.length) return;
+
+  // グローバルのmoves/boardSizeを講座データで一時上書き
+  const savedMoves = moves, savedBoardSize = boardSize;
+  moves = lecMoves; boardSize = lecBoardSize;
+
+  try {
+    variations.forEach((variation, vi) => {
+      const varPlayable = variation.moves.filter(m => m.x >= 0 && m.y >= 0);
+      const varTotalSteps = varPlayable.length;
+      if (!varTotalSteps && !variation.comment) return;
+
+      // プレイヤーDOM構築（棋譜ビューアと同じ構造）
+      const player = document.createElement('div');
+      player.className = 'var-player';
+      player.id = `lec-var-player-${vi}`;
+      player.dataset.varBase = String(Math.max(0, lecCur - 1));
+
+      const header = document.createElement('div');
+      header.className = 'var-player-header';
+      header.textContent = `変化図 ${vi + 1}（${varTotalSteps}手）`;
+      player.appendChild(header);
+
+      if (variation.comment) {
+        const commentEl2 = document.createElement('div');
+        commentEl2.className = 'var-comment';
+        commentEl2.textContent = variation.comment;
+        player.appendChild(commentEl2);
+      }
+
+      const body = document.createElement('div');
+      body.className = 'var-body';
+
+      const c = document.createElement('canvas');
+      c.className = 'ref-goban';
+      c.id = `lec-var-canvas-${vi}`;
+      c.dataset.varBase = String(Math.max(0, lecCur - 1));
+      const canvasSize = lecBoardSize >= 19 ? 300 : lecBoardSize >= 13 ? 220 : 160;
+      c.width = c.height = canvasSize;
+      body.appendChild(c);
+
+      const side = document.createElement('div');
+      side.className = 'var-side';
+
+      const ctrl = document.createElement('div');
+      ctrl.className = 'var-controls';
+      ctrl.innerHTML = `
+        <button class="var-btn" onclick="lecVarGoTo(${vi},0)">|◀</button>
+        <button class="var-btn" onclick="lecVarStep(${vi},-1)">◀</button>
+        <span class="var-counter" id="lec-var-counter-${vi}">${varTotalSteps} / ${varTotalSteps}</span>
+        <button class="var-btn" onclick="lecVarStep(${vi},1)">▶</button>
+        <button class="var-btn" onclick="lecVarGoTo(${vi},${varTotalSteps})">▶|</button>`;
+      side.appendChild(ctrl);
+
+      const badges = document.createElement('div');
+      badges.className = 'var-moves';
+      badges.id = `lec-var-badges-${vi}`;
+      const b0 = document.createElement('span');
+      b0.className = 'var-mv-badge';
+      b0.dataset.step = 0;
+      b0.textContent = '開始';
+      b0.onclick = () => lecVarGoTo(vi, 0);
+      badges.appendChild(b0);
+      varPlayable.forEach((vm, pi) => {
+        const GTP = 'ABCDEFGHJKLMNOPQRST';
+        const pos = vm.x >= 0 ? `${GTP[vm.x]}${lecBoardSize - vm.y}` : 'パス';
+        const b = document.createElement('span');
+        b.className = 'var-mv-badge';
+        b.dataset.step = pi + 1;
+        b.textContent = `${pi + 1}${vm.color === 'B' ? '●' : '○'}${pos}`;
+        b.onclick = () => lecVarGoTo(vi, pi + 1);
+        badges.appendChild(b);
+      });
+      side.appendChild(badges);
+      body.appendChild(side);
+      player.appendChild(body);
+      varEl.appendChild(player);
+
+      // 最終形を描画（グローバルがすでに講座データに上書き済み）
+      drawVariationBoard(vi, variation.moves, varTotalSteps,
+        Math.max(0, lecCur - 1), 'lec-var-canvas-', 'lec-var-player-');
+
+      // バッジ初期ハイライト
+      setTimeout(() => {
+        const bg = document.getElementById(`lec-var-badges-${vi}`);
+        if (bg) bg.querySelectorAll('.var-mv-badge').forEach(b => {
+          b.classList.toggle('cur', parseInt(b.dataset.step) === varTotalSteps);
+        });
+      }, 0);
+    });
+  } finally {
+    // 必ずグローバルを元に戻す
+    moves = savedMoves; boardSize = savedBoardSize;
+  }
+}
+
+/* 講座の変化図ナビゲーション */
+let lecVarCurStep = {};
+function lecVarGoTo(vi, step) {
+  const mv = lecCur > 0 ? lecMoves[lecCur - 1] : null;
+  const variation = mv?.variations?.[vi];
+  if (!variation) return;
+
+  const playable = variation.moves.filter(m => m.x >= 0 && m.y >= 0).length;
+  step = Math.max(0, Math.min(step, playable));
+  lecVarCurStep[vi] = step;
+
+  const counter = document.getElementById(`lec-var-counter-${vi}`);
+  if (counter) counter.textContent = `${step} / ${playable}`;
+
+  const bg = document.getElementById(`lec-var-badges-${vi}`);
+  if (bg) bg.querySelectorAll('.var-mv-badge').forEach(b => {
+    b.classList.toggle('cur', parseInt(b.dataset.step) === step);
+  });
+
+  const player = document.getElementById(`lec-var-player-${vi}`);
+  const varBase = player?.dataset.varBase !== undefined
+    ? parseInt(player.dataset.varBase) : Math.max(0, lecCur - 1);
+
+  // グローバルを一時上書きして描画
+  const savedMoves = moves, savedBoardSize = boardSize;
+  moves = lecMoves; boardSize = lecBoardSize;
+  try {
+    drawVariationBoard(vi, variation.moves, step, varBase, 'lec-var-canvas-', 'lec-var-player-');
+  } finally {
+    moves = savedMoves; boardSize = savedBoardSize;
+  }
+}
+function lecVarStep(vi, d) { lecVarGoTo(vi, (lecVarCurStep[vi] || 0) + d); }
 
 function drawLecBoard() {
   const c = document.getElementById('lec-goban'); if (!c) return;
@@ -1374,8 +1554,11 @@ function buildVarBoard(varBase, varMoves, step) {
     毎回キャンバスを全体再描画（差分描画はしない）
     step=最大値のとき → 最終形を表示
 */
-function drawVariationBoard(vi, varMoves, step, varBase) {
-  const c = document.getElementById(`var-canvas-${vi}`);
+function drawVariationBoard(vi, varMoves, step, varBase, canvasPrefix, playerPrefix) {
+  // canvasPrefix・playerPrefix: 講座の変化図では 'lec-var-canvas-' / 'lec-var-player-' を渡す
+  const cpfx = canvasPrefix || 'var-canvas-';
+  const ppfx = playerPrefix || 'var-player-';
+  const c = document.getElementById(`${cpfx}${vi}`);
   if (!c) return;
   const ctx2 = c.getContext('2d');
   const sz = boardSize;
