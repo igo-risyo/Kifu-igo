@@ -1073,6 +1073,8 @@ function updateCommentary() {
     const player = document.createElement('div');
     player.className = 'var-player';
     player.id = `var-player-${vi}`;
+    // 変化図のベース手数をプレイヤー要素に保存（curに依存しない固定値）
+    player.dataset.varBase = String(Math.max(0, cur - 1));
 
     // ヘッダー
     const header = document.createElement('div');
@@ -1158,7 +1160,7 @@ function updateCommentary() {
         });
       }
     }, 0);
-    drawVariationBoard(vi, variation.moves, varTotalSteps);
+    drawVariationBoard(vi, variation.moves, varTotalSteps, Math.max(0, cur - 1));
   });
 }
 
@@ -1185,8 +1187,14 @@ function varGoTo(vi, step) {
     });
   }
 
-  // 盤面再描画
-  drawVariationBoard(vi, variation.moves, step);
+  // ★ プレイヤー要素からvarBaseを取得（curが変わっても固定値を使う）
+  const player = document.getElementById(`var-player-${vi}`);
+  const varBase = player && player.dataset.varBase !== undefined
+    ? parseInt(player.dataset.varBase)
+    : Math.max(0, cur - 1);
+
+  // 盤面再描画（varBaseを明示的に渡す）
+  drawVariationBoard(vi, variation.moves, step, varBase);
 }
 
 function varStep(vi, d) {
@@ -1231,13 +1239,9 @@ function _varRemoveDead(bd, color, sz) {
     ★ AE[]対応: 変化図開始時にAEで指定された石を盤面から除去
     ★ AEのみノード（x<0）は「石除去」として処理し手番号はカウントしない
 */
-function buildVarBoard(vi, varMoves, step) {
+function buildVarBoard(varBase, varMoves, step) {
   const sz = boardSize;
-  // ベース手数: キャンバスのdata-var-baseから取得（curに依存しない固定値）
-  const canvas = document.getElementById(`var-canvas-${vi}`);
-  const varBase = canvas && canvas.dataset.varBase !== undefined
-    ? parseInt(canvas.dataset.varBase)
-    : Math.max(0, cur - 1);
+  // varBase: 変化図が付いているノードの直前手数（固定値、curに依存しない）
   const { board: baseBoard } = getBoardAt(Math.max(0, varBase));
   const bd = baseBoard.map(row => [...row]);
 
@@ -1282,14 +1286,19 @@ function buildVarBoard(vi, varMoves, step) {
     毎回キャンバスを全体再描画（差分描画はしない）
     step=最大値のとき → 最終形を表示
 */
-function drawVariationBoard(vi, varMoves, step) {
+function drawVariationBoard(vi, varMoves, step, varBase) {
   const c = document.getElementById(`var-canvas-${vi}`);
   if (!c) return;
   const ctx2 = c.getContext('2d');
   const sz = boardSize;
 
+  // varBaseが未指定の場合はキャンバスのdata属性から取得（互換性）
+  if (varBase === undefined) {
+    varBase = c.dataset.varBase !== undefined ? parseInt(c.dataset.varBase) : Math.max(0, cur - 1);
+  }
+
   // 変化図の盤面を計算
-  const { board, steps } = buildVarBoard(vi, varMoves, step);
+  const { board, steps } = buildVarBoard(varBase, varMoves, step);
 
   // ① 盤面ベース（格子・星）を再描画
   const { pad, cell } = drawBoardBase(c, ctx2, sz);
