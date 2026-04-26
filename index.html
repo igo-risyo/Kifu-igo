@@ -339,7 +339,7 @@ onAuthStateChanged(auth, async user => {
             <button class="ctrl-btn" onclick="step(1)">▶</button>
             <button class="ctrl-btn" onclick="step(10)">»</button>
             <button class="ctrl-btn" onclick="goTo(moves.length)">▶|</button>
-            <button class="ctrl-btn" id="btn-move-num" onclick="toggleMoveNumbers()" title="手番号表示">番</button>
+            <button class="ctrl-btn" id="btn-move-num" onclick="toggleMoveNumbers()" title="手番号表示" style="min-width:38px;font-size:.68rem;">手順</button>
           </div>
         </div>
         <div id="commentary-panel">
@@ -1242,7 +1242,12 @@ function _varRemoveDead(bd, color, sz) {
 function buildVarBoard(varBase, varMoves, step) {
   const sz = boardSize;
   // varBase: 変化図が付いているノードの直前手数（固定値、curに依存しない）
+  // 例: 58手目W[L5]に変化図があるとき varBase=57
+  // 本手順の58手目W[L5]自体は変化図には含まれない（それの代替を示す）
+  // baseMoveInfo: 本手順の「この手」（変化図で代替される手）
   const { board: baseBoard } = getBoardAt(Math.max(0, varBase));
+  // 本手順の「分岐点の手」を取得（変化図が示す代替手）
+  const branchMove = moves[varBase] || null; // varBase番目の手（0-indexed）
   const bd = baseBoard.map(row => [...row]);
 
   // ★ まず全AEを適用（変化図内のどのノードにあっても、石を除去）
@@ -1278,7 +1283,7 @@ function buildVarBoard(varBase, varMoves, step) {
     steps.push({ x: vm.x, y: vm.y, n: i + 1, color, alive: !!bd[vm.y][vm.x] });
   }
 
-  return { board: bd, baseBoard, steps, totalSteps: playableMoves.length };
+  return { board: bd, baseBoard, steps, totalSteps: playableMoves.length, branchMove };
 }
 
 /*
@@ -1298,7 +1303,7 @@ function drawVariationBoard(vi, varMoves, step, varBase) {
   }
 
   // 変化図の盤面を計算
-  const { board, steps } = buildVarBoard(varBase, varMoves, step);
+  const { board, steps, branchMove } = buildVarBoard(varBase, varMoves, step);
 
   // ① 盤面ベース（格子・星）を再描画
   const { pad, cell } = drawBoardBase(c, ctx2, sz);
@@ -1307,6 +1312,25 @@ function drawVariationBoard(vi, varMoves, step, varBase) {
   for (let r = 0; r < sz; r++) for (let cc = 0; cc < sz; cc++) {
     if (!board[r][cc]) continue;
     drawStone(ctx2, pad + cc * cell, pad + r * cell, cell * .44, board[r][cc] === 'B');
+  }
+
+  // ★ 本手順の「分岐点の手」を参考として表示
+  // （変化図は「この手の代わりに○○と打ったら」という分析なので、
+  //   この手自体は変化図には登場しない。参考として×マークで示す）
+  if (branchMove && branchMove.x >= 0 && branchMove.y >= 0) {
+    const bx = pad + branchMove.x * cell;
+    const by = pad + branchMove.y * cell;
+    const isBlack = branchMove.color === 'B';
+    // 本手順の手を薄く描画
+    ctx2.globalAlpha = 0.30;
+    drawStone(ctx2, bx, by, cell * .44, isBlack);
+    ctx2.globalAlpha = 1;
+    // 「本手順」ラベル
+    ctx2.fillStyle = isBlack ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.6)';
+    ctx2.font = `bold ${Math.max(6, Math.floor(cell * .28))}px sans-serif`;
+    ctx2.textAlign = 'center';
+    ctx2.textBaseline = 'middle';
+    ctx2.fillText('実', bx, by);
   }
 
   if (step === 0) return;
@@ -1739,13 +1763,17 @@ function drawBoardBase(tc, tctx, sz) {
   }
   tctx.strokeStyle = '#5a4a2e'; tctx.lineWidth = 1.5;
   tctx.strokeRect(pad, pad, (sz-1)*cell, (sz-1)*cell);
-  // 星
-  if (sz === 19) {
-    [[3,3],[3,9],[3,15],[9,3],[9,9],[9,15],[15,3],[15,9],[15,15]].forEach(([sx,sy]) => {
-      tctx.fillStyle = '#5a4a2e';
-      tctx.beginPath(); tctx.arc(pad+sx*cell, pad+sy*cell, 3, 0, Math.PI*2); tctx.fill();
-    });
-  }
+  // 星（19路・13路・9路対応）
+  const hoshiMap = {
+    19: [[3,3],[3,9],[3,15],[9,3],[9,9],[9,15],[15,3],[15,9],[15,15]],
+    13: [[3,3],[3,9],[6,6],[9,3],[9,9]],
+    9:  [[2,2],[2,6],[4,4],[6,2],[6,6]],
+  };
+  const hoshiDot = sz <= 9 ? 2 : 3;
+  (hoshiMap[sz] || []).forEach(([sx,sy]) => {
+    tctx.fillStyle = '#5a4a2e';
+    tctx.beginPath(); tctx.arc(pad+sx*cell, pad+sy*cell, hoshiDot, 0, Math.PI*2); tctx.fill();
+  });
   return { pad, cell };
 }
 
