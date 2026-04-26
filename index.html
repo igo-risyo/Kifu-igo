@@ -339,11 +339,14 @@ onAuthStateChanged(auth, async user => {
             <button class="ctrl-btn" onclick="step(1)">▶</button>
             <button class="ctrl-btn" onclick="step(10)">»</button>
             <button class="ctrl-btn" onclick="goTo(moves.length)">▶|</button>
+            <button class="ctrl-btn" id="btn-move-num" onclick="toggleMoveNumbers()" title="手番号表示">番</button>
           </div>
         </div>
         <div id="commentary-panel">
           <!-- 対局者名 + アゲハマ -->
           <div id="players-bar">
+            <!-- 棋戦名 -->
+            <div id="event-name-bar" style="display:none;font-size:.72rem;color:var(--premium);font-weight:600;padding-bottom:4px;border-bottom:1px solid var(--border);margin-bottom:2px;"></div>
             <div class="player-row">
               <div class="player-name"><span class="st-b"></span><span id="name-black">黒</span><span id="rank-black" style="font-size:.72rem;color:#8a7050;margin-left:3px;"></span></div>
               <div class="agehama-info">アゲハマ <span class="agehama-num" id="ah-black">0</span> 個</div>
@@ -425,6 +428,9 @@ let playerBlack = '黒';
 let playerWhite = '白';
 let rankBlack = '';
 let rankWhite = '';
+let eventName = '';   // 棋戦名 EV[]
+let gameName  = '';   // 棋譜名 GN[]
+let showMoveNumbers = false; // 手番号オン/オフ
 let currentKifu = null;
 let kifuStore   = [];
 
@@ -575,12 +581,21 @@ async function doUpload(e) {
       throw new Error(`ファイルが大きすぎます (${(sgfText.length/1024).toFixed(0)}KB > 900KB)`);
     }
 
+    // SGFのヘッダーから対局者名・棋戦名を取得
+    parseSGF(sgfText);
     await FB.addDoc(FB.collection(FB.db, 'kifu'), {
       title, isPremium, sgfText,
       fileName:       pendingFile.name,
       uploadedBy:     window.CU.uid,
       uploadedByName: window.CU.displayName || '',
-      createdAt:      FB.serverTimestamp(),
+      // SGFから取得したメタ情報
+      metaBlack:  playerBlack !== '黒' ? playerBlack : '',
+      metaWhite:  playerWhite !== '白' ? playerWhite : '',
+      metaRankB:  rankBlack,
+      metaRankW:  rankWhite,
+      metaEvent:  eventName,
+      metaGame:   gameName,
+      createdAt:  FB.serverTimestamp(),
       views: 0, purchases: 0,
     });
     showToast('✓ アップロード完了！');
@@ -729,11 +744,32 @@ function renderList(list) {
     const priceBadge = k.isPremium
       ? '<span class="badge b-paid">💎 有料 ¥100</span>'
       : '<span class="badge b-free">✓ 無料</span>';
-    return `
-    <li class="ki" onclick="selectContent('${k.id}')">
-      <div class="ki-title">${typeIcon} ${esc(k.title||'無題')}</div>
-      <div class="ki-meta">${typeBadge}${priceBadge}<span>👁 ${k.views||0}</span></div>
-    </li>`;
+
+    // 棋譜の場合は棋戦名 + 対局者名を表示
+    let displayTitle, displaySub = '';
+    if (isLecture) {
+      displayTitle = esc(k.title || '無題');
+    } else {
+      // 対局者名（黒 vs 白）
+      const bName = k.metaBlack ? `${esc(k.metaBlack)}${k.metaRankB ? ' '+esc(k.metaRankB) : ''}` : '';
+      const wName = k.metaWhite ? `${esc(k.metaWhite)}${k.metaRankW ? ' '+esc(k.metaRankW) : ''}` : '';
+      const players = (bName && wName) ? `${bName} vs ${wName}` : esc(k.title || '無題');
+      // 棋戦名
+      const evName = k.metaEvent ? esc(k.metaEvent) : '';
+      displayTitle = evName || esc(k.title || '無題');
+      if (evName && players && players !== esc(k.title||'無題'))
+        displaySub = `<div style="font-size:.7rem;color:#7a6050;margin-top:1px;">${players}</div>`;
+      else if (!evName && players)
+        displayTitle = players;
+    }
+
+    return (
+      `<li class="ki" onclick="selectContent('${k.id}')">` +
+      `<div class="ki-title">${typeIcon} ` + displayTitle + `</div>` +
+      displaySub +
+      `<div class="ki-meta">${typeBadge}${priceBadge}<span>👁 ${k.views||0}</span></div>` +
+      `</li>`
+    );
   }).join('');
 }
 
@@ -1585,6 +1621,8 @@ function parseSGF(text) {
   playerWhite = '白';
   rankBlack = '';
   rankWhite = '';
+  eventName = '';
+  gameName  = '';
 
   const rootStart = text.indexOf('(');
   if (rootStart < 0) return;
@@ -1598,6 +1636,8 @@ function parseSGF(text) {
     if (hp.PW && hp.PW[0].trim()) playerWhite = hp.PW[0].trim();
     if (hp.BR && hp.BR[0].trim()) rankBlack = hp.BR[0].trim();
     if (hp.WR && hp.WR[0].trim()) rankWhite = hp.WR[0].trim();
+    if (hp.EV && hp.EV[0].trim()) eventName = hp.EV[0].trim();
+    if (hp.GN && hp.GN[0].trim()) gameName  = hp.GN[0].trim();
   }
 
   moves = flattenMainLine(sequence);
@@ -1719,9 +1759,39 @@ function drawBoard(upTo) {
     if (!board[r][cc]) continue;
     drawStone(mainCtx, pad+cc*cell, pad+r*cell, cell*.46, board[r][cc]==='B');
   }
-  // 最後の手マーク（取られていない場合のみ）
+
+  // ★ 手番号表示（showMoveNumbers=true のとき）
+  if (showMoveNumbers) {
+    // 各石に何手目かを対応付け（後から置かれた石が同じ位置にある場合は最新の手番号）
+    const numMap = {}; // "x,y" → {n, color}
+    const limit2 = Math.min(upTo, moves.length);
+    for (let i=0; i<limit2; i++) {
+      const mv = moves[i];
+      if (mv.x<0 || mv.y<0) continue;
+      const key = `${mv.x},${mv.y}`;
+      // 石取りで消えた石は除外（board上にない）
+      if (board[mv.y][mv.x]) {
+        numMap[key] = { n: i+1, color: mv.color };
+      } else {
+        delete numMap[key]; // 取られた → 表示しない
+      }
+    }
+    const fontSize = Math.max(7, Math.floor(cell * .34));
+    mainCtx.font = `bold ${fontSize}px sans-serif`;
+    mainCtx.textAlign = 'center';
+    mainCtx.textBaseline = 'middle';
+    Object.entries(numMap).forEach(([key, {n, color}]) => {
+      const [x, y] = key.split(',').map(Number);
+      const cx = pad + x * cell, cy = pad + y * cell;
+      // 白石の上は黒文字、黒石の上は白文字
+      mainCtx.fillStyle = color === 'B' ? 'rgba(255,255,255,.9)' : 'rgba(0,0,0,.85)';
+      mainCtx.fillText(String(n), cx, cy);
+    });
+  }
+
+  // 最後の手マーク（手番号オフのときのみ表示）
   const limit = Math.min(upTo, moves.length);
-  if (limit > 0) {
+  if (limit > 0 && !showMoveNumbers) {
     const lv = moves[limit-1];
     if (lv.x >= 0 && board[lv.y]?.[lv.x]) {
       const cx = pad+lv.x*cell, cy = pad+lv.y*cell;
@@ -1730,6 +1800,18 @@ function drawBoard(upTo) {
       mainCtx.beginPath(); mainCtx.arc(cx, cy, cell*.17, 0, Math.PI*2); mainCtx.stroke();
     }
   }
+}
+
+/* 手番号表示トグル */
+function toggleMoveNumbers() {
+  showMoveNumbers = !showMoveNumbers;
+  const btn = document.getElementById('btn-move-num');
+  if (btn) {
+    btn.style.background = showMoveNumbers ? 'var(--accent)' : '';
+    btn.style.color      = showMoveNumbers ? '#fff' : '';
+    btn.title = showMoveNumbers ? '手番号を非表示' : '手番号を表示';
+  }
+  drawBoard(cur);
 }
 
 /* 参考図描画 (REF[...]のSGF座標リスト) */
@@ -1787,6 +1869,13 @@ function updateView() {
     document.getElementById('name-white').textContent = playerWhite;
     document.getElementById('rank-black').textContent = rankBlack;
     document.getElementById('rank-white').textContent = rankWhite;
+    // 棋戦名表示
+    const evBar = document.getElementById('event-name-bar');
+    if (evBar) {
+      const evText = [eventName, gameName].filter(Boolean).join('　');
+      evBar.textContent = evText || '';
+      evBar.style.display = evText ? '' : 'none';
+    }
     const { agehamaB, agehamaW } = getBoardAt(cur);
     document.getElementById('ah-black').textContent = agehamaB;
     document.getElementById('ah-white').textContent = agehamaW;
