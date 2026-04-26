@@ -180,7 +180,7 @@ import { getFirestore, doc, setDoc, getDoc, collection, getDocs, addDoc,
 
 // ▼▼▼ Firebaseプロジェクトの設定値に変更してください ▼▼▼
 const firebaseConfig = {
- apiKey: "AIzaSyDMWj2D93inW4a5yziKyBx9twcQsQzKdl0",
+  apiKey: "AIzaSyDMWj2D93inW4a5yziKyBx9twcQsQzKdl0",
   authDomain: "kufu-igo.firebaseapp.com",
   projectId: "kufu-igo",
   storageBucket: "kufu-igo.firebasestorage.app",
@@ -711,6 +711,9 @@ function updateCommentary() {
   if (!variations.length) return;
 
   variations.forEach((variation, vi) => {
+    // AEのみノード（x<0）を除いた実際の手数 ← 先に定義
+    const varPlayable = variation.moves.filter(m => m.x >= 0 && m.y >= 0);
+    const varTotalSteps = varPlayable.length;
     varCurStep[vi] = varTotalSteps; // 初期位置は最終形
 
     // 変化図プレイヤーのDOM構築
@@ -721,9 +724,6 @@ function updateCommentary() {
     // ヘッダー
     const header = document.createElement('div');
     header.className = 'var-player-header';
-    // AEのみノード（x<0）を除いた実際の手数
-    const varPlayable = variation.moves.filter(m => m.x >= 0 && m.y >= 0);
-    const varTotalSteps = varPlayable.length;
     header.textContent = `変化図 ${vi + 1}（${varTotalSteps}手）`;
     player.appendChild(header);
 
@@ -762,7 +762,7 @@ function updateCommentary() {
       <button class="var-btn" onclick="varStep(${vi},-1)">◀</button>
       <span class="var-counter" id="var-counter-${vi}">${varTotalSteps} / ${varTotalSteps}</span>
       <button class="var-btn" onclick="varStep(${vi},1)">▶</button>
-      <button class="var-btn" onclick="varGoTo(${vi},${variation.moves.length})">▶|</button>
+      <button class="var-btn" onclick="varGoTo(${vi},${varTotalSteps})">▶|</button>
     `;
     side.appendChild(ctrl);
 
