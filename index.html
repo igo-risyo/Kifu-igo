@@ -1,4 +1,4 @@
-\<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
@@ -202,7 +202,7 @@ import { getFirestore, doc, setDoc, getDoc, collection, getDocs, addDoc,
 
 // ▼▼▼ Firebaseプロジェクトの設定値に変更してください ▼▼▼
 const firebaseConfig = {
- apiKey: "AIzaSyDMWj2D93inW4a5yziKyBx9twcQsQzKdl0",
+  apiKey: "AIzaSyDMWj2D93inW4a5yziKyBx9twcQsQzKdl0",
   authDomain: "kufu-igo.firebaseapp.com",
   projectId: "kufu-igo",
   storageBucket: "kufu-igo.firebasestorage.app",
@@ -792,6 +792,20 @@ async function selectContent(id) {
 }
 
 async function selectKifu(id) {
+  // 講座ビューアが開いていたら閉じて棋譜カードを復元
+  const lv = document.getElementById('lecture-viewer');
+  if (lv && lv.style.display !== 'none' && lv.innerHTML.trim() !== '') {
+    lv.style.display = 'none';
+    lv.innerHTML = '';
+    lecMoves = []; lecCur = 0;
+    const vgCard = document.getElementById('viewer-grid')?.closest('.card');
+    const maCard = document.getElementById('moves-area')?.closest('.card');
+    const aiCard = document.getElementById('ai-card');
+    if (vgCard)  vgCard.style.display  = '';
+    if (maCard)  maCard.style.display  = '';
+    if (aiCard)  aiCard.style.display  = '';
+  }
+
   document.querySelectorAll('.ki').forEach(li =>
     li.classList.toggle('active', li.getAttribute('onclick').includes(`'${id}'`)));
 
@@ -1313,19 +1327,15 @@ function updateCommentary() {
 
   const mv = (cur > 0) ? moves[cur - 1] : null;
 
-  // コメントテキスト（「この手のコメントはありません」は有料記事では非表示）
+  // コメントテキスト表示
   const comment = mv?.comment || '';
   if (comment) {
     ct.style.display = '';
     ct.textContent = comment;
   } else {
-    // 有料記事 or 変化図あり → 非表示。無料記事は薄く表示
-    if (currentKifu.isPremium) {
-      ct.style.display = 'none';
-    } else {
-      ct.style.display = '';
-      ct.textContent = '（この手のコメントはありません）';
-    }
+    // コメントがない手は常に非表示
+    ct.style.display = 'none';
+    ct.textContent = '';
   }
 
   rb.innerHTML = '';
