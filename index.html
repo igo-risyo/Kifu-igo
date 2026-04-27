@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+\<!DOCTYPE html>
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
@@ -202,7 +202,7 @@ import { getFirestore, doc, setDoc, getDoc, collection, getDocs, addDoc,
 
 // ▼▼▼ Firebaseプロジェクトの設定値に変更してください ▼▼▼
 const firebaseConfig = {
-  apiKey: "AIzaSyDMWj2D93inW4a5yziKyBx9twcQsQzKdl0",
+ apiKey: "AIzaSyDMWj2D93inW4a5yziKyBx9twcQsQzKdl0",
   authDomain: "kufu-igo.firebaseapp.com",
   projectId: "kufu-igo",
   storageBucket: "kufu-igo.firebasestorage.app",
@@ -477,10 +477,6 @@ function renderUploadSection() {
   </div>
   <form id="form-kifu" onsubmit="doUpload(event)">
     <div class="form-field">
-      <label>棋譜タイトル</label>
-      <input type="text" id="f-title" placeholder="例：序盤の定石解説①" required>
-    </div>
-    <div class="form-field">
       <label>SGFファイル</label>
       <div id="upload-zone"
         onclick="document.getElementById('file-input').click()"
@@ -568,7 +564,6 @@ async function doUpload(e) {
   if (!pendingFile) { showToast('SGFファイルを選択してください'); return; }
   if (!window.FB?.db) { showToast('Firebase未設定です', 3000); return; }
 
-  const title     = document.getElementById('f-title').value.trim();
   const isPremium = document.getElementById('f-premium').value === 'premium';
   const btn       = document.getElementById('upload-btn');
   btn.textContent = 'アップロード中...'; btn.disabled = true;
@@ -583,8 +578,18 @@ async function doUpload(e) {
 
     // SGFのヘッダーから対局者名・棋戦名を取得
     parseSGF(sgfText);
+    // タイトルはSGFのメタ情報から自動生成
+    const autoTitle = (() => {
+      const ev = eventName || gameName || '';
+      const pb = playerBlack !== '黒' ? playerBlack : '';
+      const pw = playerWhite !== '白' ? playerWhite : '';
+      if (ev && pb && pw) return `${ev} ${pb} vs ${pw}`;
+      if (pb && pw) return `${pb} vs ${pw}`;
+      if (ev) return ev;
+      return pendingFile.name.replace(/\.sgf$/i, '');
+    })();
     await FB.addDoc(FB.collection(FB.db, 'kifu'), {
-      title, isPremium, sgfText,
+      title: autoTitle, isPremium, sgfText,
       fileName:       pendingFile.name,
       uploadedBy:     window.CU.uid,
       uploadedByName: window.CU.displayName || '',
@@ -925,7 +930,6 @@ async function selectLecture(id) {
             Stripeで購入
           </button>
         </div>
-        <button onclick="closeLecture()" style="margin-top:.8rem;background:none;border:1px solid var(--border);border-radius:4px;padding:5px 12px;cursor:pointer;font-size:.76rem;">← 一覧に戻る</button>
       </div>`;
     return;
   }
@@ -978,8 +982,7 @@ async function selectLecture(id) {
     </div>`;
   }
 
-  html2 += `<button onclick="closeLecture()" style="margin-top:.9rem;background:none;border:1px solid var(--border);border-radius:4px;padding:5px 12px;cursor:pointer;font-size:.76rem;">← 一覧に戻る</button>
-  </div>`;
+  html2 += `</div>`;
 
   lv.innerHTML = html2;
 
@@ -1231,6 +1234,8 @@ function drawLecBoard() {
       ctx2.lineWidth = 1.5;
       ctx2.beginPath(); ctx2.arc(pad+lv2.x*cell, pad+lv2.y*cell, cell*.17, 0, Math.PI*2); ctx2.stroke();
     }
+    // マークアップを描画
+    if (lv2.markup) drawMarkup(ctx2, lv2.markup, pad, cell, board, lecBoardSize);
   }
 }
 
@@ -1607,6 +1612,14 @@ function drawVariationBoard(vi, varMoves, step, varBase, canvasPrefix, playerPre
     ctx2.arc(pad + lastAlive.x * cell, pad + lastAlive.y * cell, cell * .17, 0, Math.PI * 2);
     ctx2.stroke();
   }
+
+  // ⑤ 変化図の現在の手のマークアップを描画
+  if (step > 0) {
+    const playable = varMoves.filter(m => m.x >= 0 && m.y >= 0);
+    if (step <= playable.length && playable[step-1]?.markup) {
+      drawMarkup(ctx2, playable[step-1].markup, pad, cell, board, sz);
+    }
+  }
 }
 
 /* ═══════════════════════════════════════
@@ -1838,6 +1851,41 @@ function parseSGFTree(text, pos) {
   flattenMainLine: ツリーをメインライン（最初の子を辿る）でフラット化
   AE[]対応: 変化図ノードのAEプロパティを記録し、buildVarBoardで適用
 */
+/* SGFマークアップを解析する関数
+   LB[座標:ラベル] → labels: [{x,y,text}]
+   TR[座標]        → triangles: [{x,y}]
+   MA[座標]        → crosses: [{x,y}]
+   SQ[座標]        → squares: [{x,y}]
+   CR[座標]        → circles: [{x,y}]
+*/
+function parseMarkup(props) {
+  const markup = { labels:[], triangles:[], crosses:[], squares:[], circles:[] };
+  if (!props) return markup;
+
+  // LB: ラベル LB[座標:テキスト]
+  if (props.LB) {
+    props.LB.forEach(val => {
+      // val = "pd:Ａ" 形式
+      const colon = val.indexOf(':');
+      if (colon < 2) return;
+      const coord = val.slice(0, colon);
+      const text  = val.slice(colon + 1);
+      const { x, y } = sgfXY(coord);
+      if (x >= 0) markup.labels.push({ x, y, text });
+    });
+  }
+  // TR: 三角
+  if (props.TR) props.TR.forEach(v => { const p=sgfXY(v); if(p.x>=0) markup.triangles.push(p); });
+  // MA: ×
+  if (props.MA) props.MA.forEach(v => { const p=sgfXY(v); if(p.x>=0) markup.crosses.push(p); });
+  // SQ: □
+  if (props.SQ) props.SQ.forEach(v => { const p=sgfXY(v); if(p.x>=0) markup.squares.push(p); });
+  // CR: ○
+  if (props.CR) props.CR.forEach(v => { const p=sgfXY(v); if(p.x>=0) markup.circles.push(p); });
+
+  return markup;
+}
+
 function flattenMainLine(sequence) {
   const result = [];
 
@@ -1853,12 +1901,12 @@ function flattenMainLine(sequence) {
         const aeList = vp.AE ? vp.AE.map(s2 => sgfXY(s2)).filter(p2 => p2.x >= 0) : [];
 
         if (vp.B) {
-          varMoves.push({ color:'B', ...sgfXY(vp.B[0]), comment: vc, ae: aeList });
+          varMoves.push({ color:'B', ...sgfXY(vp.B[0]), comment: vc, ae: aeList, markup: parseMarkup(vp) });
         } else if (vp.W) {
-          varMoves.push({ color:'W', ...sgfXY(vp.W[0]), comment: vc, ae: aeList });
+          varMoves.push({ color:'W', ...sgfXY(vp.W[0]), comment: vc, ae: aeList, markup: parseMarkup(vp) });
         } else if (aeList.length > 0 || vc) {
           // 手なし・AEのみ or コメントのみのノード
-          varMoves.push({ color: null, x: -1, y: -1, comment: vc, ae: aeList });
+          varMoves.push({ color: null, x: -1, y: -1, comment: vc, ae: aeList, markup: parseMarkup(vp) });
         }
         if (vn.firstChild) walk(vn.firstChild);
       }
@@ -1884,10 +1932,13 @@ function flattenMainLine(sequence) {
         return collectVarMoves(childSeq);
       }).filter(v => v.moves.filter(m => m.x >= 0).length > 0 || v.comment);
 
+      // マークアップを取得
+      const markup = parseMarkup(p);
+
       if (p.B) {
-        result.push({ color:'B', ...sgfXY(p.B[0]), comment, variations });
+        result.push({ color:'B', ...sgfXY(p.B[0]), comment, variations, markup });
       } else if (p.W) {
-        result.push({ color:'W', ...sgfXY(p.W[0]), comment, variations });
+        result.push({ color:'W', ...sgfXY(p.W[0]), comment, variations, markup });
       }
 
       if (node.firstChild) walk(node.firstChild);
@@ -2039,12 +2090,94 @@ function drawStone(c, x, y, r, isBlack) {
   if (!isBlack) { c.strokeStyle = 'rgba(0,0,0,.18)'; c.lineWidth = .5; c.stroke(); }
 }
 
+/* マークアップ描画（LB・TR・MA・SQ・CR） */
+function drawMarkup(ctx, markup, pad, cell, board, sz) {
+  if (!markup) return;
+  const sz2 = sz;
+
+  markup.labels.forEach(({ x, y, text }) => {
+    if (x < 0 || y < 0 || x >= sz2 || y >= sz2) return;
+    const cx = pad + x * cell, cy = pad + y * cell;
+    const stone = board?.[y]?.[x];
+    // 石の上のラベル色
+    const fg = stone === 'B' ? '#fff' : stone === 'W' ? '#222' : '#8b3a0f';
+    const fs = Math.max(8, Math.floor(cell * .38));
+    ctx.font = `bold ${fs}px sans-serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = fg;
+    ctx.fillText(text, cx, cy);
+  });
+
+  markup.triangles.forEach(({ x, y }) => {
+    if (x < 0 || y < 0 || x >= sz2 || y >= sz2) return;
+    const cx = pad + x * cell, cy = pad + y * cell;
+    const r = cell * .32;
+    const stone = board?.[y]?.[x];
+    ctx.strokeStyle = stone === 'B' ? '#fff' : '#222';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - r);
+    ctx.lineTo(cx + r * Math.cos(Math.PI/6), cy + r * Math.sin(Math.PI/6));
+    ctx.lineTo(cx - r * Math.cos(Math.PI/6), cy + r * Math.sin(Math.PI/6));
+    ctx.closePath(); ctx.stroke();
+  });
+
+  markup.crosses.forEach(({ x, y }) => {
+    if (x < 0 || y < 0 || x >= sz2 || y >= sz2) return;
+    const cx = pad + x * cell, cy = pad + y * cell;
+    const r = cell * .28;
+    const stone = board?.[y]?.[x];
+    ctx.strokeStyle = stone === 'B' ? '#fff' : '#222';
+    ctx.lineWidth = 1.8;
+    ctx.beginPath(); ctx.moveTo(cx-r,cy-r); ctx.lineTo(cx+r,cy+r); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx+r,cy-r); ctx.lineTo(cx-r,cy+r); ctx.stroke();
+  });
+
+  markup.squares.forEach(({ x, y }) => {
+    if (x < 0 || y < 0 || x >= sz2 || y >= sz2) return;
+    const cx = pad + x * cell, cy = pad + y * cell;
+    const r = cell * .26;
+    const stone = board?.[y]?.[x];
+    ctx.strokeStyle = stone === 'B' ? '#fff' : '#222';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(cx - r, cy - r, r*2, r*2);
+  });
+
+  markup.circles.forEach(({ x, y }) => {
+    if (x < 0 || y < 0 || x >= sz2 || y >= sz2) return;
+    const cx = pad + x * cell, cy = pad + y * cell;
+    const r = cell * .28;
+    const stone = board?.[y]?.[x];
+    ctx.strokeStyle = stone === 'B' ? '#fff' : '#222';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2); ctx.stroke();
+  });
+}
+
 function drawBoard(upTo) {
   const { pad, cell } = drawBoardBase(mainCanvas, mainCtx, boardSize);
   const { board } = getBoardAt(upTo);
+
+  // コメント付き手の座標セットを事前に構築
+  const commentedPositions = new Set();
+  for (let i=0; i<Math.min(upTo, moves.length); i++) {
+    const mv = moves[i];
+    if (mv.comment && mv.x >= 0 && mv.y >= 0 && board[mv.y][mv.x]) {
+      commentedPositions.add(`${mv.x},${mv.y}`);
+    }
+  }
+
   for (let r=0; r<boardSize; r++) for (let cc=0; cc<boardSize; cc++) {
     if (!board[r][cc]) continue;
-    drawStone(mainCtx, pad+cc*cell, pad+r*cell, cell*.46, board[r][cc]==='B');
+    const key = `${cc},${r}`;
+    if (commentedPositions.has(key)) {
+      // コメントのある手の石を薄く表示（70%の不透明度）
+      mainCtx.globalAlpha = 0.55;
+      drawStone(mainCtx, pad+cc*cell, pad+r*cell, cell*.46, board[r][cc]==='B');
+      mainCtx.globalAlpha = 1;
+    } else {
+      drawStone(mainCtx, pad+cc*cell, pad+r*cell, cell*.46, board[r][cc]==='B');
+    }
   }
 
   // ★ 手番号表示（showMoveNumbers=true のとき）
@@ -2086,6 +2219,12 @@ function drawBoard(upTo) {
       mainCtx.lineWidth = 1.5;
       mainCtx.beginPath(); mainCtx.arc(cx, cy, cell*.17, 0, Math.PI*2); mainCtx.stroke();
     }
+  }
+
+  // ★ マークアップ描画（LB・TR・MA・SQ・CR）
+  // 現在の手のマークアップを表示
+  if (limit > 0 && moves[limit-1]?.markup) {
+    drawMarkup(mainCtx, moves[limit-1].markup, pad, cell, board, boardSize);
   }
 }
 
