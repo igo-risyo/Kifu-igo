@@ -202,7 +202,7 @@ import { getFirestore, doc, setDoc, getDoc, collection, getDocs, addDoc,
 
 // ▼▼▼ Firebaseプロジェクトの設定値に変更してください ▼▼▼
 const firebaseConfig = {
-  apiKey: "AIzaSyDMWj2D93inW4a5yziKyBx9twcQsQzKdl0",
+ apiKey: "AIzaSyDMWj2D93inW4a5yziKyBx9twcQsQzKdl0",
   authDomain: "kufu-igo.firebaseapp.com",
   projectId: "kufu-igo",
   storageBucket: "kufu-igo.firebasestorage.app",
@@ -2168,26 +2168,9 @@ function drawBoard(upTo) {
   const { pad, cell } = drawBoardBase(mainCanvas, mainCtx, boardSize);
   const { board } = getBoardAt(upTo);
 
-  // コメント付き手の座標セットを事前に構築
-  const commentedPositions = new Set();
-  for (let i=0; i<Math.min(upTo, moves.length); i++) {
-    const mv = moves[i];
-    if (mv.comment && mv.x >= 0 && mv.y >= 0 && board[mv.y][mv.x]) {
-      commentedPositions.add(`${mv.x},${mv.y}`);
-    }
-  }
-
   for (let r=0; r<boardSize; r++) for (let cc=0; cc<boardSize; cc++) {
     if (!board[r][cc]) continue;
-    const key = `${cc},${r}`;
-    if (commentedPositions.has(key)) {
-      // コメントのある手の石を薄く表示（70%の不透明度）
-      mainCtx.globalAlpha = 0.55;
-      drawStone(mainCtx, pad+cc*cell, pad+r*cell, cell*.46, board[r][cc]==='B');
-      mainCtx.globalAlpha = 1;
-    } else {
-      drawStone(mainCtx, pad+cc*cell, pad+r*cell, cell*.46, board[r][cc]==='B');
-    }
+    drawStone(mainCtx, pad+cc*cell, pad+r*cell, cell*.46, board[r][cc]==='B');
   }
 
   // ★ 手番号表示（showMoveNumbers=true のとき）
