@@ -202,12 +202,12 @@ import { getFirestore, doc, setDoc, getDoc, collection, getDocs, addDoc,
 
 // ▼▼▼ Firebaseプロジェクトの設定値に変更してください ▼▼▼
 const firebaseConfig = {
- apiKey: "AIzaSyDMWj2D93inW4a5yziKyBx9twcQsQzKdl0",
-  authDomain: "kufu-igo.firebaseapp.com",
-  projectId: "kufu-igo",
-  storageBucket: "kufu-igo.firebasestorage.app",
-  messagingSenderId: "810543494533",
-  appId: "1:810543494533:web:c7ae9ccc1769128696c0ec"
+  apiKey:            "YOUR_API_KEY",
+  authDomain:        "YOUR_PROJECT.firebaseapp.com",
+  projectId:         "YOUR_PROJECT_ID",
+  storageBucket:     "YOUR_PROJECT.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId:             "YOUR_APP_ID"
 };
 // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
 
@@ -491,9 +491,19 @@ function renderUploadSection() {
     </div>
     <div class="form-field">
       <label>公開設定</label>
-      <select id="f-premium">
+      <select id="f-premium" onchange="togglePriceInput('f-price-wrap',this.value)">
         <option value="free">無料</option>
-        <option value="premium">有料（¥100）</option>
+        <option value="premium">有料</option>
+      </select>
+    </div>
+    <div class="form-field" id="f-price-wrap" style="display:none;">
+      <label>販売価格</label>
+      <select id="f-price">
+        <option value="100">¥100</option>
+        <option value="200">¥200</option>
+        <option value="300">¥300</option>
+        <option value="400">¥400</option>
+        <option value="500">¥500</option>
       </select>
     </div>
     <div class="notice" style="margin-bottom:.55rem;">
@@ -525,13 +535,28 @@ function renderUploadSection() {
     </div>
     <div class="form-field">
       <label>公開設定</label>
-      <select id="lec-premium">
+      <select id="lec-premium" onchange="togglePriceInput('lec-price-wrap',this.value)">
         <option value="free">無料</option>
-        <option value="premium">有料（¥100）</option>
+        <option value="premium">有料</option>
+      </select>
+    </div>
+    <div class="form-field" id="lec-price-wrap" style="display:none;">
+      <label>販売価格</label>
+      <select id="lec-price">
+        <option value="100">¥100</option>
+        <option value="200">¥200</option>
+        <option value="300">¥300</option>
+        <option value="400">¥400</option>
+        <option value="500">¥500</option>
       </select>
     </div>
     <button type="submit" class="submit-btn" id="lec-upload-btn">講座を投稿</button>
   </form>`;
+}
+
+function togglePriceInput(wrapId, val) {
+  const wrap = document.getElementById(wrapId);
+  if (wrap) wrap.style.display = val === 'premium' ? '' : 'none';
 }
 
 function switchUploadType(type) {
@@ -565,6 +590,7 @@ async function doUpload(e) {
   if (!window.FB?.db) { showToast('Firebase未設定です', 3000); return; }
 
   const isPremium = document.getElementById('f-premium').value === 'premium';
+  const price = isPremium ? parseInt(document.getElementById('f-price')?.value || '100') : 0;
   const btn       = document.getElementById('upload-btn');
   btn.textContent = 'アップロード中...'; btn.disabled = true;
 
@@ -589,7 +615,7 @@ async function doUpload(e) {
       return pendingFile.name.replace(/\.sgf$/i, '');
     })();
     await FB.addDoc(FB.collection(FB.db, 'kifu'), {
-      title: autoTitle, isPremium, sgfText,
+      title: autoTitle, isPremium, price, sgfText,
       fileName:       pendingFile.name,
       uploadedBy:     window.CU.uid,
       uploadedByName: window.CU.displayName || '',
@@ -670,6 +696,7 @@ async function doUploadLecture(e) {
   const body    = document.getElementById('lec-body').value.trim();
   const youtube = document.getElementById('lec-youtube').value.trim();
   const premium = document.getElementById('lec-premium').value === 'premium';
+  const lecPrice = premium ? parseInt(document.getElementById('lec-price')?.value || '100') : 0;
   const btn     = document.getElementById('lec-upload-btn');
   btn.textContent = '投稿中...'; btn.disabled = true;
   try {
@@ -679,6 +706,7 @@ async function doUploadLecture(e) {
       title, body, youtube, sgfText,
       contentType:    'lecture',
       isPremium:      premium,
+      price:          lecPrice,
       uploadedBy:     window.CU.uid,
       uploadedByName: window.CU.displayName || '',
       createdAt:      FB.serverTimestamp(),
@@ -746,9 +774,12 @@ function renderList(list) {
     const typeBadge = isLecture
       ? '<span class="badge badge-lecture">📚 講座</span>'
       : '';
+    const priceLabel = k.isPremium
+      ? `💎 有料 ¥${k.price || 100}`
+      : '✓ 無料';
     const priceBadge = k.isPremium
-      ? '<span class="badge b-paid">💎 有料 ¥100</span>'
-      : '<span class="badge b-free">✓ 無料</span>';
+      ? `<span class="badge b-paid">${priceLabel}</span>`
+      : `<span class="badge b-free">${priceLabel}</span>`;
 
     // 棋譜の場合は棋戦名 + 対局者名を表示
     let displayTitle, displaySub = '';
@@ -868,6 +899,7 @@ function downloadCurrentSGF() {
 ═══════════════════════════════════════ */
 /* 講座用独立変数（グローバルのmoves/boardSizeと混ざらないよう分離） */
 let lecMoves = [], lecCur = 0, lecBoardSize = 19;
+let lecShowMoveNumbers = false; // 講座の手番号表示フラグ
 
 /* 講座用の独立したgetBoardAt（グローバルmoves/boardSizeを使わない） */
 function lecGetBoardAt(upTo) {
@@ -939,7 +971,7 @@ async function selectLecture(id) {
         <div class="lecture-purchase-cta">
           <h3>📖 講座を購入する</h3>
           <p>購入後はいつでも閲覧可能です。</p>
-          <div class="price-tag">¥100 <span>（税込）</span></div>
+          <div class="price-tag">¥${currentKifu?.price || 100} <span>（税込）</span></div>
           <button class="pay-btn" onclick="openLecturePurchase('${id}','${esc(meta.title||'')}')">
             Stripeで購入
           </button>
@@ -981,6 +1013,7 @@ async function selectLecture(id) {
             <button class="ctrl-btn" onclick="lecStep(1)">▶</button>
             <button class="ctrl-btn" onclick="lecStep(10)">»</button>
             <button class="ctrl-btn" onclick="lecGoTo(lecMoves.length)">▶|</button>
+            <button class="ctrl-btn" id="lec-btn-move-num" onclick="toggleLecMoveNumbers()" title="手番号表示" style="min-width:38px;font-size:.68rem;">手順</button>
           </div>
         </div>
         <div style="flex:1;min-width:180px;display:flex;flex-direction:column;gap:.6rem;">
@@ -1030,6 +1063,7 @@ async function selectLecture(id) {
     const commentElInit = document.getElementById('lec-comment');
     if (commentElInit) commentElInit.style.display = 'none';
     lecVarCurStep = {};
+    lecShowMoveNumbers = false;
 
     drawLecBoard();
     const el = document.getElementById('lec-counter');
@@ -1227,6 +1261,16 @@ function lecVarGoTo(vi, step) {
 }
 function lecVarStep(vi, d) { lecVarGoTo(vi, (lecVarCurStep[vi] || 0) + d); }
 
+function toggleLecMoveNumbers() {
+  lecShowMoveNumbers = !lecShowMoveNumbers;
+  const btn = document.getElementById('lec-btn-move-num');
+  if (btn) {
+    btn.style.background = lecShowMoveNumbers ? 'var(--accent)' : '';
+    btn.style.color      = lecShowMoveNumbers ? '#fff' : '';
+  }
+  drawLecBoard();
+}
+
 function drawLecBoard() {
   const c = document.getElementById('lec-goban'); if (!c) return;
   const ctx2 = c.getContext('2d');
@@ -1250,6 +1294,25 @@ function drawLecBoard() {
     }
     // マークアップを描画
     if (lv2.markup) drawMarkup(ctx2, lv2.markup, pad, cell, board, lecBoardSize);
+  }
+
+  // ★ 手番号表示（lecShowMoveNumbers=true のとき）
+  if (lecShowMoveNumbers) {
+    const numMap = {};
+    for (let i = 0; i < lecCur && i < lecMoves.length; i++) {
+      const mv = lecMoves[i];
+      if (mv.x < 0 || mv.y < 0) continue;
+      if (board[mv.y][mv.x]) numMap[`${mv.x},${mv.y}`] = { n: i+1, color: mv.color };
+      else delete numMap[`${mv.x},${mv.y}`];
+    }
+    const fontSize = Math.max(7, Math.floor(cell * .34));
+    ctx2.font = `bold ${fontSize}px sans-serif`;
+    ctx2.textAlign = 'center'; ctx2.textBaseline = 'middle';
+    Object.entries(numMap).forEach(([key, {n, color}]) => {
+      const [x, y] = key.split(',').map(Number);
+      ctx2.fillStyle = color === 'B' ? 'rgba(255,255,255,.9)' : 'rgba(0,0,0,.85)';
+      ctx2.fillText(String(n), pad + x * cell, pad + y * cell);
+    });
   }
 }
 
