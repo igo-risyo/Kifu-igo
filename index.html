@@ -44,16 +44,40 @@ header{background:var(--ink);padding:0 1.4rem;display:flex;align-items:center;ju
 }
 @media(max-width:600px){
   .app{padding:.5rem;}
-  canvas#goban{width:100% !important;height:auto !important;}
+  /* 碁盤を画面幅いっぱいに */
+  canvas#goban{width:min(96vw,480px) !important;height:min(96vw,480px) !important;}
+  /* コントロールボタンを大きく */
+  .ctrl-btn{padding:7px 12px;font-size:.78rem;min-width:36px;}
+  #move-counter{font-size:.78rem;}
+  /* 変化図を縦並び */
   .var-body{flex-direction:column;}
   .var-side{max-width:100%;}
-  canvas.ref-goban{width:100% !important;height:auto !important;}
+  canvas.ref-goban{width:min(94vw,300px) !important;height:min(94vw,300px) !important;}
+  /* 棋譜ビューアを縦並び */
   #viewer-grid{grid-template-columns:1fr;}
-  #players-bar{font-size:.75rem;}
-  .move-info-bar{font-size:.7rem;}
-  #moves-area{max-height:70px;}
-  .card{padding:.75rem .85rem;}
-  .card h2{font-size:.8rem;}
+  /* 解説パネルの調整 */
+  #players-bar{font-size:.78rem;}
+  .move-info-bar{font-size:.74rem;}
+  #moves-area{max-height:80px;}
+  /* カード余白を詰める */
+  .card{padding:.7rem .8rem;}
+  .card h2{font-size:.82rem;}
+  /* フィルターバーを小さく */
+  .filter-btn{font-size:.65rem;padding:3px 8px;}
+  .search-wrap input{font-size:.76rem;}
+  /* 講座キャンバス */
+  #lec-goban{width:min(94vw,340px) !important;height:min(94vw,340px) !important;}
+  /* 変化図コントロール */
+  .var-btn{padding:4px 8px;font-size:.68rem;}
+  /* ヘッダーのロゴを調整 */
+  .logo-main{font-size:.95rem;}
+}
+/* タッチデバイスでホバー無効化 */
+@media(hover:none){
+  .ctrl-btn:hover,.var-btn:hover,.filter-btn:hover,.ki:hover{
+    background:initial;transform:none;box-shadow:none;
+  }
+  .ki:hover{background:var(--paper2);}
 }
 .left-col,.right-col{display:flex;flex-direction:column;gap:1rem;}
 
@@ -172,6 +196,11 @@ canvas.ref-goban{border:2px solid var(--grid);border-radius:2px;box-shadow:2px 2
 .search-clear{position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#9a8060;font-size:.9rem;display:none;line-height:1;}
 /* 投稿者表示 */
 .ki-poster{font-size:.67rem;color:#8a7060;margin-top:1px;}
+/* お気に入りボタン */
+.fav-btn{background:none;border:none;cursor:pointer;font-size:.95rem;line-height:1;padding:2px;transition:transform .15s;flex-shrink:0;}
+.fav-btn:hover{transform:scale(1.25);}
+.ki{display:flex;flex-direction:column;gap:2px;position:relative;}
+.fav-btn-wrap{position:absolute;top:6px;right:6px;}
 
 /* フィルターバー */
 .filter-bar{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:.7rem;}
@@ -204,8 +233,10 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/fireba
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged }
   from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 import { getFirestore, doc, setDoc, getDoc, collection, getDocs, addDoc,
-         serverTimestamp, query, orderBy, updateDoc, increment }
+         serverTimestamp, query, orderBy, updateDoc, increment, deleteDoc, deleteDoc }
   from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { getFunctions, httpsCallable }
+  from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
 
 // ▼▼▼ Firebaseプロジェクトの設定値に変更してください ▼▼▼
 const firebaseConfig = {
@@ -241,11 +272,12 @@ async function isSubAdmin(user) {
   } catch { return false; }
 }
 
-window.FB = { db, auth,
+const functions = getFunctions(app, 'asia-northeast1'); // 東京リージョン
+window.FB = { db, auth, functions, httpsCallable,
   signIn:  () => signInWithPopup(auth, prov),
   signOut: () => signOut(auth),
   doc, setDoc, getDoc, collection, getDocs, addDoc,
-  serverTimestamp, query, orderBy, updateDoc, increment,
+  serverTimestamp, query, orderBy, updateDoc, increment, deleteDoc,
 };
 
 onAuthStateChanged(auth, async user => {
@@ -331,6 +363,7 @@ onAuthStateChanged(auth, async user => {
         <button class="filter-btn"           onclick="setFilter('lecture',this)">📚 講座</button>
         <button class="filter-btn"           onclick="setFilter('free',this)">✓ 無料</button>
         <button class="filter-btn"           onclick="setFilter('paid',this)">💎 有料</button>
+        <button class="filter-btn"           onclick="setFilter('fav',this)">⭐ お気に入り</button>
       </div>
       <ul id="kifu-list"><li class="empty">読み込み中...</li></ul>
     </div>
@@ -444,6 +477,7 @@ let rankWhite = '';
 let eventName = '';   // 棋戦名 EV[]
 let gameName  = '';   // 棋譜名 GN[]
 let showMoveNumbers = false; // 手番号オン/オフ
+let favSet = new Set(); // お気に入りIDセット
 let currentKifu = null;
 let kifuStore   = [];
 
@@ -785,9 +819,54 @@ async function loadKifuList() {
     const q    = FB.query(FB.collection(FB.db,'kifu'), FB.orderBy('createdAt','desc'));
     const snap = await FB.getDocs(q);
     kifuStore  = snap.docs.map(d => ({ id:d.id, ...d.data() }));
+    // ④ お気に入りをロード
+    if (window.CU) await loadFavorites();
     if (!kifuStore.length) loadSampleList();
     else renderList(kifuStore);
   } catch(e) { console.warn(e); loadSampleList(); }
+}
+
+/* ④ お気に入り関数群 */
+async function loadFavorites() {
+  if (!window.CU || !window.FB?.db) return;
+  try {
+    const snap = await FB.getDocs(
+      FB.query(FB.collection(FB.db,'favorites'), FB.orderBy('createdAt','desc'))
+    );
+    favSet.clear();
+    snap.docs.forEach(d => {
+      if (d.data().userId === window.CU.uid) favSet.add(d.data().contentId);
+    });
+  } catch(e) {}
+}
+
+async function toggleFavorite(id, e) {
+  e.stopPropagation(); // リストアイテムのクリックを止める
+  if (!window.CU) { showToast('お気に入りにはログインが必要です'); return; }
+  if (!window.FB?.db) return;
+
+  const favId = `${window.CU.uid}_${id}`;
+  const ref   = FB.doc(FB.db, 'favorites', favId);
+
+  if (favSet.has(id)) {
+    // 削除
+    try {
+      await FB.deleteDoc(ref);
+      favSet.delete(id);
+      showToast('お気に入りから削除しました');
+    } catch(err) { showToast('エラー: ' + err.message); }
+  } else {
+    // 追加
+    try {
+      await FB.setDoc(ref, {
+        userId: window.CU.uid, contentId: id,
+        createdAt: FB.serverTimestamp(),
+      });
+      favSet.add(id);
+      showToast('⭐ お気に入りに追加しました');
+    } catch(err) { showToast('エラー: ' + err.message); }
+  }
+  renderList(kifuStore); // 星マークを更新
 }
 
 function loadSampleList() {
@@ -807,6 +886,7 @@ function renderList(list) {
   if (currentFilter === 'lecture') filtered = list.filter(k => k.contentType === 'lecture');
   if (currentFilter === 'free')    filtered = list.filter(k => !k.isPremium);
   if (currentFilter === 'paid')    filtered = list.filter(k => k.isPremium);
+  if (currentFilter === 'fav')     filtered = list.filter(k => favSet.has(k.id));
 
   // ★ テキスト検索フィルター
   if (searchQuery) {
@@ -861,8 +941,11 @@ function renderList(list) {
       ? `<span class="ki-poster">📝 ${esc(poster)}</span>`
       : '';
 
+    const isFav = favSet.has(k.id);
+    const favIcon = isFav ? '⭐' : '☆';
     return (
       `<li class="ki" onclick="selectContent('${k.id}')">` +
+      `<div class="fav-btn-wrap"><button class="fav-btn" onclick="toggleFavorite('${k.id}',event)" title="${isFav?'お気に入りから削除':'お気に入りに追加'}">${favIcon}</button></div>` +
       `<div class="ki-title">${typeIcon} ` + displayTitle + `</div>` +
       displaySub +
       posterLabel +
@@ -941,6 +1024,14 @@ async function selectKifu(id) {
   buildBadges();
   updateView();
   renderCommentary();
+
+  // ② 閲覧数カウントアップ（Firestoreのみ、サンプルはスキップ）
+  if (window.FB?.db && !id.startsWith('s')) {
+    FB.updateDoc(FB.doc(FB.db,'kifu',id), { views: FB.increment(1) }).catch(()=>{});
+    // ローカルのkifuStoreも更新
+    const local = kifuStore.find(k => k.id === id);
+    if (local) local.views = (local.views || 0) + 1;
+  }
 }
 
 /* ═══════════════════════════════════════
@@ -1095,6 +1186,13 @@ async function selectLecture(id) {
   html2 += `</div>`;
 
   lv.innerHTML = html2;
+
+  // ② 講座の閲覧数カウントアップ
+  if (window.FB?.db && !id.startsWith('s')) {
+    FB.updateDoc(FB.doc(FB.db,'kifu',id), { views: FB.increment(1) }).catch(()=>{});
+    const local = kifuStore.find(k => k.id === id);
+    if (local) local.views = (local.views || 0) + 1;
+  }
 
   // SGFを講座用変数にパース（グローバル変数を汚染しない）
   if (meta.sgfText) {
@@ -1782,19 +1880,37 @@ function openKifuPurchase() {
 }
 
 async function startCheckout() {
-  // Firebase Cloud Functions で Stripe Checkout Session を作成してください
-  // 実装後は以下のコメントを外してください:
-  //
-  // const fn = firebase.functions().httpsCallable('createCheckout');
-  // const { data } = await fn({
-  //   name: '棋譜解説: ' + currentKifu.title,
-  //   amount: 100, type: 'kifu', kifuId: currentKifu.id,
-  //   successUrl: location.origin + location.pathname + '?purchased=' + currentKifu.id,
-  //   cancelUrl:  location.href,
-  // });
-  // window.location.href = data.url;
-  showToast('Stripe Cloud Functions を実装してください', 4000);
-  closeModal();
+  if (!window.FB?.functions) { showToast('Firebase未設定です', 3000); return; }
+  if (!currentKifu) return;
+
+  const btn = document.querySelector('#modal button[onclick="startCheckout()"]');
+  if (btn) { btn.textContent = '処理中...'; btn.disabled = true; }
+
+  try {
+    const createCheckout = FB.httpsCallable(FB.functions, 'createCheckout');
+    const { data } = await createCheckout({
+      title:      currentKifu.title || '棋譜・講座',
+      amount:     currentKifu.price || 100,
+      contentId:  currentKifu.id,
+      contentType: currentKifu.contentType || 'kifu',
+      successUrl: location.origin + location.pathname + '?purchased=' + currentKifu.id,
+      cancelUrl:  location.href,
+    });
+    if (data?.url) {
+      window.location.href = data.url;
+    } else {
+      throw new Error('URLが返されませんでした');
+    }
+  } catch(e) {
+    console.error('Checkout error:', e);
+    if (e.message?.includes('internal') || e.message?.includes('NOT_FOUND')) {
+      showToast('⚠️ Cloud Functionsが未デプロイです。functions/index.jsを確認してください。', 5000);
+    } else {
+      showToast('決済エラー: ' + e.message, 4000);
+    }
+    if (btn) { btn.textContent = 'Stripeで支払う'; btn.disabled = false; }
+    closeModal();
+  }
 }
 
 /* ═══════════════════════════════════════
