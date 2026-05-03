@@ -165,6 +165,13 @@ canvas.ref-goban{border:2px solid var(--grid);border-radius:2px;box-shadow:2px 2
 #toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(80px);background:var(--ink);color:var(--paper);padding:8px 18px;border-radius:6px;font-size:.78rem;transition:transform .3s;z-index:300;pointer-events:none;white-space:nowrap;}
 #toast.show{transform:translateX(-50%) translateY(0);}
 .empty{color:#9a8060;font-size:.74rem;text-align:center;padding:.3rem 0;}
+/* 検索ボックス */
+.search-wrap{position:relative;margin-bottom:.65rem;}
+.search-wrap input{width:100%;background:var(--paper);border:1px solid var(--border);border-radius:6px;padding:6px 32px 6px 10px;font-size:.78rem;font-family:inherit;color:var(--ink);}
+.search-wrap input:focus{outline:none;border-color:var(--accent2);}
+.search-clear{position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#9a8060;font-size:.9rem;display:none;line-height:1;}
+/* 投稿者表示 */
+.ki-poster{font-size:.67rem;color:#8a7060;margin-top:1px;}
 
 /* フィルターバー */
 .filter-bar{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:.7rem;}
@@ -311,6 +318,12 @@ onAuthStateChanged(auth, async user => {
     </div>
     <div class="card">
       <h2>📋 コンテンツ一覧</h2>
+      <!-- 検索ボックス -->
+      <div class="search-wrap">
+        <input type="text" id="search-box" placeholder="🔍 棋士名・講座名・投稿者名で検索..."
+          oninput="onSearchInput(this.value)">
+        <button class="search-clear" id="search-clear" onclick="clearSearch()">✕</button>
+      </div>
       <!-- コンテンツ種別フィルター -->
       <div class="filter-bar">
         <button class="filter-btn active"    onclick="setFilter('all',this)">すべて</button>
@@ -490,6 +503,10 @@ function renderUploadSection() {
       <div id="file-preview" style="font-size:.7rem;color:#8a7050;margin-top:3px;"></div>
     </div>
     <div class="form-field">
+      <label>投稿者・解説者の表示名（任意）</label>
+      <input type="text" id="f-poster" placeholder="例：田中五段、碁会所あおば など">
+    </div>
+    <div class="form-field">
       <label>公開設定</label>
       <select id="f-premium" onchange="togglePriceInput('f-price-wrap',this.value)">
         <option value="free">無料</option>
@@ -532,6 +549,10 @@ function renderUploadSection() {
       </div>
       <input type="file" id="lec-sgf-input" accept=".sgf" style="display:none;" onchange="pickLecSGF(this.files[0])">
       <div id="lec-sgf-preview" style="font-size:.7rem;color:#8a7050;margin-top:3px;"></div>
+    </div>
+    <div class="form-field">
+      <label>投稿者・解説者の表示名（任意）</label>
+      <input type="text" id="lec-poster" placeholder="例：山田六段、〇〇囲碁教室 など">
     </div>
     <div class="form-field">
       <label>公開設定</label>
@@ -617,9 +638,11 @@ async function doUpload(e) {
     await FB.addDoc(FB.collection(FB.db, 'kifu'), {
       title: autoTitle, isPremium, price, sgfText,
       fileName:       pendingFile.name,
+      posterName:     (document.getElementById('lec-poster')?.value || '').trim(),
       uploadedBy:     window.CU.uid,
       uploadedByName: window.CU.displayName || '',
       // SGFから取得したメタ情報
+      posterName: (document.getElementById('f-poster')?.value || '').trim(),
       metaBlack:  playerBlack !== '黒' ? playerBlack : '',
       metaWhite:  playerWhite !== '白' ? playerWhite : '',
       metaRankB:  rankBlack,
@@ -727,14 +750,31 @@ async function doUploadLecture(e) {
 
 /* ── フィルター ── */
 let currentFilter = 'all';
+let searchQuery = '';
+
+function onSearchInput(val) {
+  searchQuery = val.trim();
+  const clearBtn = document.getElementById('search-clear');
+  if (clearBtn) clearBtn.style.display = searchQuery ? 'block' : 'none';
+  renderList(kifuStore);
+}
+function clearSearch() {
+  searchQuery = '';
+  const box = document.getElementById('search-box');
+  if (box) box.value = '';
+  const clearBtn = document.getElementById('search-clear');
+  if (clearBtn) clearBtn.style.display = 'none';
+  renderList(kifuStore);
+}
+
 function setFilter(filter, el) {
   currentFilter = filter;
   document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active','active-free','active-paid','active-lecture'));
-  if (filter === 'free')    el.classList.add('active-free');
+  if (filter === 'free')         el.classList.add('active-free');
   else if (filter === 'paid')    el.classList.add('active-paid');
   else if (filter === 'lecture') el.classList.add('active-lecture');
   else el.classList.add('active');
-  renderList(kifuStore); // 再描画
+  renderList(kifuStore);
 }
 
 async function loadKifuList() {
@@ -760,49 +800,72 @@ function loadSampleList() {
 
 function renderList(list) {
   const ul = document.getElementById('kifu-list');
-  // フィルタ適用
+
+  // 種別フィルター
   let filtered = list;
   if (currentFilter === 'kifu')    filtered = list.filter(k => k.contentType !== 'lecture');
   if (currentFilter === 'lecture') filtered = list.filter(k => k.contentType === 'lecture');
   if (currentFilter === 'free')    filtered = list.filter(k => !k.isPremium);
   if (currentFilter === 'paid')    filtered = list.filter(k => k.isPremium);
 
-  if (!filtered.length) { ul.innerHTML = '<li class="empty">該当するコンテンツがありません</li>'; return; }
+  // ★ テキスト検索フィルター
+  if (searchQuery) {
+    const q = searchQuery.toLowerCase();
+    filtered = filtered.filter(k => {
+      // 棋士名（黒・白）
+      if ((k.metaBlack || '').toLowerCase().includes(q)) return true;
+      if ((k.metaWhite || '').toLowerCase().includes(q)) return true;
+      // 棋戦名・タイトル
+      if ((k.metaEvent || '').toLowerCase().includes(q)) return true;
+      if ((k.title    || '').toLowerCase().includes(q)) return true;
+      // 投稿者の表示名（解説者名）
+      if ((k.posterName    || '').toLowerCase().includes(q)) return true;
+      if ((k.uploadedByName|| '').toLowerCase().includes(q)) return true;
+      return false;
+    });
+  }
+
+  if (!filtered.length) {
+    ul.innerHTML = `<li class="empty">${searchQuery ? '「'+esc(searchQuery)+'」に一致するコンテンツがありません' : '該当するコンテンツがありません'}</li>`;
+    return;
+  }
+
   ul.innerHTML = filtered.map(k => {
     const isLecture = k.contentType === 'lecture';
     const typeIcon  = isLecture ? '📚' : '🎯';
-    const typeBadge = isLecture
-      ? '<span class="badge badge-lecture">📚 講座</span>'
-      : '';
-    const priceLabel = k.isPremium
-      ? `💎 有料 ¥${k.price || 100}`
-      : '✓ 無料';
+    const typeBadge = isLecture ? '<span class="badge badge-lecture">📚 講座</span>' : '';
+    const priceLabel = k.isPremium ? `💎 有料 ¥${k.price || 100}` : '✓ 無料';
     const priceBadge = k.isPremium
       ? `<span class="badge b-paid">${priceLabel}</span>`
       : `<span class="badge b-free">${priceLabel}</span>`;
 
-    // 棋譜の場合は棋戦名 + 対局者名を表示
+    // タイトル・サブタイトル
     let displayTitle, displaySub = '';
     if (isLecture) {
       displayTitle = esc(k.title || '無題');
     } else {
-      // 対局者名（黒 vs 白）
       const bName = k.metaBlack ? `${esc(k.metaBlack)}${k.metaRankB ? ' '+esc(k.metaRankB) : ''}` : '';
       const wName = k.metaWhite ? `${esc(k.metaWhite)}${k.metaRankW ? ' '+esc(k.metaRankW) : ''}` : '';
       const players = (bName && wName) ? `${bName} vs ${wName}` : esc(k.title || '無題');
-      // 棋戦名
-      const evName = k.metaEvent ? esc(k.metaEvent) : '';
-      displayTitle = evName || esc(k.title || '無題');
+      const evName  = k.metaEvent ? esc(k.metaEvent) : '';
+      displayTitle  = evName || esc(k.title || '無題');
       if (evName && players && players !== esc(k.title||'無題'))
         displaySub = `<div style="font-size:.7rem;color:#7a6050;margin-top:1px;">${players}</div>`;
       else if (!evName && players)
         displayTitle = players;
     }
 
+    // ★ 投稿者・解説者表示
+    const poster = k.posterName || k.uploadedByName || '';
+    const posterLabel = poster
+      ? `<span class="ki-poster">📝 ${esc(poster)}</span>`
+      : '';
+
     return (
       `<li class="ki" onclick="selectContent('${k.id}')">` +
       `<div class="ki-title">${typeIcon} ` + displayTitle + `</div>` +
       displaySub +
+      posterLabel +
       `<div class="ki-meta">${typeBadge}${priceBadge}<span>👁 ${k.views||0}</span></div>` +
       `</li>`
     );
