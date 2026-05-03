@@ -368,6 +368,7 @@ async function loadKifu(){
         <td style="text-align:center;">${k.purchases||0}</td>
         <td style="font-size:.72rem;color:#7a6050;">${esc(k.uploadedByName||'—')}</td>
         <td style="display:flex;gap:4px;">
+          <button class="btn btn-s" style="font-size:.68rem;" onclick="editContent('${k.id}')">編集</button>
           <button class="btn btn-s" style="font-size:.68rem;" onclick="togglePremium('${k.id}',${!k.isPremium})">${k.isPremium?'無料化':'有料化'}</button>
           <button class="btn btn-d" onclick="deleteKifu('${k.id}')">削除</button>
         </td>
@@ -379,6 +380,57 @@ async function togglePremium(id,val){
   try{await FB.updateDoc(FB.doc(FB.db,'kifu',id),{isPremium:val});showToast('✓ 変更しました');loadKifu();}
   catch(e){showToast('エラー: '+e.message,4000);}
 }
+/* ⑤ コンテンツ編集モーダル */
+function editContent(id) {
+  const k = kifuData.find(k => k.id === id);
+  if (!k) return;
+  const isLecture = k.contentType === 'lecture';
+
+  openModal(`${isLecture ? '📚' : '🎯'} コンテンツ編集`, `
+    <div class="form-field">
+      <label>タイトル</label>
+      <input type="text" id="edit-title" value="${esc(k.title||'')}" style="width:100%;background:var(--paper);border:1px solid var(--border);border-radius:4px;padding:5px 8px;font-size:.78rem;font-family:inherit;">
+    </div>
+    <div class="form-field">
+      <label>投稿者・解説者の表示名</label>
+      <input type="text" id="edit-poster" value="${esc(k.posterName||k.uploadedByName||'')}" style="width:100%;background:var(--paper);border:1px solid var(--border);border-radius:4px;padding:5px 8px;font-size:.78rem;font-family:inherit;">
+    </div>
+    <div class="form-field">
+      <label>価格（0=無料）</label>
+      <select id="edit-price" style="background:var(--paper);border:1px solid var(--border);border-radius:4px;padding:5px 8px;font-size:.78rem;font-family:inherit;">
+        <option value="0" ${!k.isPremium?'selected':''}>無料</option>
+        <option value="100" ${k.isPremium&&(k.price||100)===100?'selected':''}>¥100</option>
+        <option value="200" ${k.price===200?'selected':''}>¥200</option>
+        <option value="300" ${k.price===300?'selected':''}>¥300</option>
+        <option value="400" ${k.price===400?'selected':''}>¥400</option>
+        <option value="500" ${k.price===500?'selected':''}>¥500</option>
+      </select>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:.8rem;">
+      <button onclick="saveEdit('${id}')" class="btn btn-p" style="flex:1;">保存</button>
+      <button onclick="closeModal()" class="btn btn-s" style="flex:1;">キャンセル</button>
+    </div>
+  `);
+}
+
+async function saveEdit(id) {
+  const title     = document.getElementById('edit-title')?.value.trim();
+  const poster    = document.getElementById('edit-poster')?.value.trim();
+  const priceVal  = parseInt(document.getElementById('edit-price')?.value || '0');
+  const isPremium = priceVal > 0;
+
+  if (!title) { showToast('タイトルを入力してください'); return; }
+  try {
+    await FB.updateDoc(FB.doc(FB.db, 'kifu', id), {
+      title, posterName: poster,
+      isPremium, price: isPremium ? priceVal : 0,
+    });
+    showToast('✓ 保存しました');
+    closeModal();
+    loadKifu();
+  } catch(e) { showToast('エラー: ' + e.message, 4000); }
+}
+
 async function deleteKifu(id){
   if(!confirm('この棋譜を削除しますか？この操作は取り消せません。'))return;
   try{await FB.deleteDoc(FB.doc(FB.db,'kifu',id));showToast('削除しました');loadKifu();}
